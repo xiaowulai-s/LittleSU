@@ -33,6 +33,9 @@ jobs:
   # 先跑类型检查与单测，避免把坏版本推成镜像
   verify:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
