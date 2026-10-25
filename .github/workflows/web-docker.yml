@@ -42,6 +42,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/web/package-lock.json
 
       # tag 触发时强制 tag 与 package.json 版本一致，避免镜像标签与 /api/status 返回值不一致
       - name: 校验 tag 与 package.json 版本一致
