@@ -53,7 +53,7 @@ jobs:
         run: npm run build
 
       - name: 组装可移植包目录
-        working-directory: .next/standalone
+        working-directory: apps/web/.next/standalone
         run: |
           # standalone 只含 server.js 与按需 trace 的 node_modules，
           # 静态资源与 public 需按 Dockerfile 的方式补进来
@@ -82,7 +82,7 @@ jobs:
           fi
 
       - name: 冒烟测试
-        working-directory: .next/standalone
+        working-directory: apps/web/.next/standalone
         run: |
           # 必须重定向输出：后台进程占着 stdout 会让这一步一直挂着不结束
           PORT=3000 HOSTNAME=127.0.0.1 node server.js > /tmp/standalone.log 2>&1 &
