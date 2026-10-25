@@ -1,0 +1,16 @@
+[package]
+name = "littlesu-tv"
+version = "0.1.0"
+description = "LittleSU TV — 免费在线视频搜索与观看平台"
+edition = "2021"
+
+[lib]
+name = "littlesu_tv_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"

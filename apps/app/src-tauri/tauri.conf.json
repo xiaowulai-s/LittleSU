@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LittleSU TV",
+  "version": "1.2.0",
+  "identifier": "com.xiaowulai.littlesu",
+  "build": {
+    "frontendDist": "../public",
+    "beforeDevCommand": ""
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "LittleSU TV",
+        "width": 800,
+        "height": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false,
+        "maximized": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": ["default"]
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/xiaowulai-s/LittleSU-TV-App/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEE3RUE4OURCQjYwODlGMDgKUldRSW53aTIyNG5xcC9JMzhnK0JLWTNLUXdscVNmMUhxblluOENvaDc4U090YktoMGtsWDJnaGgK"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "minSdkVersion": 24
+    }
+  }
+}

@@ -1,0 +1,16 @@
+LittleSU_TV
+Copyright (c) 2026 xiaowulai-s
+
+本软件基于 LibreTV 修改：
+  原项目: https://github.com/LibreSpark/LibreTV
+  Copyright (c) LibreSpark contributors
+  原项目以 GNU Affero General Public License v3.0 (AGPL-3.0-or-later) 授权。
+
+本项目的修改与衍生部分同样以 AGPL-3.0-or-later 授权发布。
+协议全文见 LICENSE 文件。
+
+第三方组件（概要）：
+  - Next.js / React — MIT
+  - ArtPlayer — MIT
+  - hls.js — Apache-2.0
+  详见 package.json 及各依赖自带许可声明。

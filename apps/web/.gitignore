@@ -1,0 +1,39 @@
+node_modules/
+.next/
+out/
+.env
+.env*.local
+*.tsbuildinfo
+vitest-results.json
+*.log
+
+# AI 工具产物（本机会话/缓存数据，不入库）
+.mimosa/
+.zcode/
+.codebuddy/
+generated-images/
+# Tauri 构建产物
+/src-tauri/target
+/src-tauri/binaries
+/src-tauri/resources
+/src-tauri/gen
+
+.vercel
+
+.vercel
+.env*
+
+# Tencent Cloud EdgeOne
+.env
+.edgeone/*
+.tef_dist/*
+  
+# Local Netlify folder
+.netlify
+
+# 签名私钥与独立 APP 仓库（绝不入库）
+/signing/
+/LibreTV-App/
+
+# 临时调试文件
+*.log

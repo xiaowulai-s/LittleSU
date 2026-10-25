@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- LittleSU TV 应用图标：渐变圆角底 + 复古电视机 + 播放键 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#A855F7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="115" fill="url(#bg)"/>
+
+  <!-- 天线 -->
+  <line x1="196" y1="128" x2="246" y2="186" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round"/>
+  <line x1="316" y1="128" x2="266" y2="186" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round"/>
+
+  <!-- 机身 -->
+  <rect x="128" y="192" width="256" height="192" rx="46" fill="none" stroke="#FFFFFF" stroke-width="26"/>
+
+  <!-- 播放键（圆角三角） -->
+  <path d="M234 248 L294 288 L234 328 Z"
+        fill="#FFFFFF" stroke="#FFFFFF" stroke-width="20"
+        stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

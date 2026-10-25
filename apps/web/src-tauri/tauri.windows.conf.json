@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "targets": ["nsis"],
+    "externalBin": ["binaries/node-server"],
+    "resources": ["resources/server/**/*"]
+  }
+}
