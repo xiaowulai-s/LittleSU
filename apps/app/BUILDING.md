@@ -2,6 +2,8 @@
 
 本应用使用 [Tauri](https://tauri.app/) 框架。以下是编译、运行和打包应用的常用命令：
 
+> 本目录（`apps/app`）是 [LittleSU 单仓库](../..) 的独立客户端子项目，以下命令均在该目录执行。
+
 ## 1. 环境准备
 
 确保你已经安装了 [Node.js](https://nodejs.org/) 和 Rust。然后根据 Tauri 官方文档为你的操作系统配置好 Tauri 开发环境：
