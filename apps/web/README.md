@@ -2,6 +2,8 @@
 
 免费在线视频搜索与观看平台：输入片名，即可在多个点播采集源中聚合搜索并在线播放。基于 Next.js 15（App Router）+ TypeScript + Tailwind CSS，播放内核为 ArtPlayer + hls.js。
 
+> 本目录是 [LittleSU 单仓库](../..) 的网页版子项目；独立客户端源码见 [`apps/app`](../app)。
+>
 > 本项目基于 [LibreTV](https://github.com/LibreSpark/LibreTV) 修改，遵循 **AGPL-3.0** 协议继续开源，感谢原项目作者与贡献者。出处声明见 [NOTICE](./NOTICE)。
 
 ## 功能特性
@@ -16,7 +18,7 @@
 
 ## 快速开始（Node.js）
 
-要求 Node.js 20+。
+要求 Node.js 20+。以下命令均在 `apps/web` 目录执行。
 
 ```bash
 # 1. 安装依赖
@@ -89,7 +91,7 @@ DEFAULT_LIVE_SOURCES=[{"name":"IPTV·中国","url":"https://iptv-org.github.io/i
 | 平台 | 获取方式 |
 |---|---|
 | Android | Release 中的 `LittleSU-TV-v*-android-universal.apk`，下载安装即可 |
-| Windows / macOS / Linux | [LittleSU-TV-App](https://github.com/xiaowulai-s/LittleSU-TV-App/releases) 仓库的 Release |
+| Windows / macOS / Linux | [LittleSU Releases](https://github.com/xiaowulai-s/LittleSU/releases/latest) 中的安装包 |
 
 客户端特性：
 
@@ -97,7 +99,7 @@ DEFAULT_LIVE_SOURCES=[{"name":"IPTV·中国","url":"https://iptv-org.github.io/i
 - **桌面端应用内自动更新**：v1.2.0 起内置 updater，启动时自动检查新版本并一键升级
 - **安卓端更新提醒**：启动时比对 GitHub 最新版本，弹窗引导下载
 
-客户端源码位于姊妹仓库 [LittleSU-TV-App](https://github.com/xiaowulai-s/LittleSU-TV-App)（基于 LibreTV-App）。
+客户端源码位于本仓库 [`apps/app`](../app)（基于 LibreTV-App）。
 
 ## 免责声明
 

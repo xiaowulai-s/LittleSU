@@ -399,12 +399,12 @@ function initPlayer(videoUrl, sourceCode) {
         contextmenu: [                   // 自定义右键菜单
             {
                 text: '关于 LittleSU TV',
-                link: 'https://github.com/LibreSpark/LittleSU TV'
+                link: 'https://github.com/xiaowulai-s/LittleSU'
             },
             {
                 text: '问题反馈',
                 click: (player) => {
-                    window.open('https://github.com/LibreSpark/LittleSU TV/issues', '_blank');
+                    window.open('https://github.com/xiaowulai-s/LittleSU/issues', '_blank');
                 }
             }
         ],

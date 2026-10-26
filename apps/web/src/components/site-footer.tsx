@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth';
 
 /** 本仓库最新 tag（即最新版本号），用于页脚的更新检测 */
-const UPSTREAM_TAGS_API = 'https://api.github.com/repos/xiaowulai-s/LittleSU_TV/tags?per_page=1';
+const UPSTREAM_TAGS_API = 'https://api.github.com/repos/xiaowulai-s/LittleSU/tags?per_page=1';
 
 /** 页脚版本号的更新检测结果；null 表示无需检测（本地 dev 构建） */
 type UpstreamUpdate = { status: 'checking' | 'latest' | 'newer'; latest?: string };
@@ -93,7 +93,7 @@ export function SiteFooter() {
     <footer className="border-t border-line py-4">
       <p className="text-center text-xs text-faint">
         <a
-          href="https://github.com/xiaowulai-s/LittleSU_TV"
+          href="https://github.com/xiaowulai-s/LittleSU"
           target="_blank"
           rel="noopener noreferrer"
           className="group relative inline-block cursor-help hover:text-accent"

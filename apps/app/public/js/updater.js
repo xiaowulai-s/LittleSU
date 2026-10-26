@@ -8,7 +8,7 @@
 (function () {
   'use strict';
 
-  const REPO = 'xiaowulai-s/LittleSU-TV-App';
+  const REPO = 'xiaowulai-s/LittleSU';
   const CHECK_DELAY_MS = 5000;
 
   const tauri = window.__TAURI__ || null;

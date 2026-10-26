@@ -14,7 +14,7 @@ LittleSU/
 | 仓库子项目 | 形态 | 无需电脑 | 出处链 |
 |---|---|---|---|
 | [`apps/web`](./apps/web) | 网页版（可部署站点） | —（部署即用） | [LibreTV](https://github.com/LibreSpark/LibreTV)（AGPL） |
-| [`apps/app`](./apps/app) | 独立客户端（直连资源站，无服务器） | ✅ | [LibreTV-App](https://github.com/KeyRotate/LibreTV-App)（MIT）→ LibreTV（AGPL） |
+| [`apps/app`](./apps/app) | 独立客户端（直连资源站，无服务器） | ✅ | [LibreTV-App](https://github.com/KeyRotate/LibreTV-App)（Apache-2.0）→ LibreTV（AGPL） |
 
 ## 功能
 
@@ -26,9 +26,14 @@ LittleSU/
 
 ## 发布流程
 
+两个子项目共用同一版本号。发版时先同步版本号，再推送标签：
+
 ```bash
-# 改版本号（apps/app/package.json 与 apps/app/src-tauri/tauri.conf.json）
-git tag v1.2.1 && git push origin v1.2.1
+(cd apps/web && npm version 1.2.4 --no-git-tag-version)
+(cd apps/app && npm version 1.2.4 --no-git-tag-version)
+# 手动同步 apps/app/src-tauri/tauri.conf.json 的 version 字段
+git commit -am "v1.2.4：版本号同步"
+git tag v1.2.4 && git push origin main v1.2.4
 ```
 
 | 工作流 | 触发 | 产物 |
@@ -46,6 +51,13 @@ cd apps/web && npm install && npm run dev
 # 独立客户端（桌面）
 cd apps/app && npm install && npx tauri dev
 ```
+
+## 仓库沿革与归档
+
+- v1.2.0 起，网页版与独立客户端合并到本单仓库。
+- 原网页版仓库 [`LittleSU_TV`](https://github.com/xiaowulai-s/LittleSU_TV) 与原客户端仓库 [`LittleSU-TV-App`](https://github.com/xiaowulai-s/LittleSU-TV-App) 已归档（只读），代码分别迁入 `apps/web` 与 `apps/app`；旧提交历史与旧 Release 保留在原仓库。
+- 新版本统一发布在本仓库的 [Releases](https://github.com/xiaowulai-s/LittleSU/releases)。
+- 迁移与归档明细见 [docs/ARCHIVE.md](./docs/ARCHIVE.md)。
 
 ## 免责声明
 

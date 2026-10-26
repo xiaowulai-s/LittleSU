@@ -10,7 +10,7 @@ import { fetchUpstream, getCache, setCache } from './fetch-utils';
  */
 
 const CACHE_TTL = 60 * 60 * 1000;
-const UA = 'LittleSU (+https://github.com/xiaowulai-s/LittleSU_TV)';
+const UA = 'LittleSU (+https://github.com/xiaowulai-s/LittleSU)';
 
 const FALLBACK_BASE = 'https://60s.viki.moe';
 

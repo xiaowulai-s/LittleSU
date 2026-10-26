@@ -11,7 +11,7 @@
 
 ## apps/app（独立客户端）
 
-- 上游：[LibreTV-App](https://github.com/KeyRotate/LibreTV-App)（MIT）
+- 上游：[LibreTV-App](https://github.com/KeyRotate/LibreTV-App)（Apache-2.0）
   - 其上游：[LibreTV](https://github.com/LibreSpark/LibreTV)（AGPL-3.0-or-later）
 - Copyright (c) bestZwei 及 LibreTV-App 贡献者
 - 授权：Apache License 2.0

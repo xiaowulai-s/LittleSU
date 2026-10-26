@@ -1,15 +1,16 @@
 {
   "name": "littlesu-tv",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "description": "LittleSU TV — 免费在线视频搜索与观看平台",
   "license": "AGPL-3.0-or-later",
   "author": "xiaowulai-s",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xiaowulai-s/LittleSU_TV.git"
+    "url": "https://github.com/xiaowulai-s/LittleSU.git",
+    "directory": "apps/web"
   },
-  "homepage": "https://github.com/xiaowulai-s/LittleSU_TV#readme",
+  "homepage": "https://github.com/xiaowulai-s/LittleSU/tree/main/apps/web",
   "scripts": {
     "dev": "next dev -p 8080",
     "build": "next build",

@@ -2,7 +2,9 @@
 
 **免费在线视频搜索与观看平台 —— 独立客户端版**：搜索、播放、豆瓣推荐全部内置，**无需任何服务器、无需电脑、无需域名**，安装即用。
 
-> 本应用基于 [LibreTV-App](https://github.com/KeyRotate/LibreTV-App)（MIT）修改，其上游为 [LibreTV](https://github.com/LibreSpark/LibreTV)（AGPL）。出处声明见 [NOTICE](./NOTICE)。
+> 本目录是 [LittleSU 单仓库](../..) 的独立客户端子项目；网页版源码见 [`apps/web`](../web)。
+>
+> 本应用基于 [LibreTV-App](https://github.com/KeyRotate/LibreTV-App)（Apache-2.0）修改，其上游为 [LibreTV](https://github.com/LibreSpark/LibreTV)（AGPL）。出处声明见 [NOTICE](./NOTICE)。
 
 ## 特性
 
@@ -16,7 +18,7 @@
 
 ## 下载
 
-前往 [Releases](https://github.com/xiaowulai-s/LittleSU-TV-App/releases/latest)：
+前往 [LittleSU Releases](https://github.com/xiaowulai-s/LittleSU/releases/latest)：
 
 | 平台 | 文件 |
 |---|---|
@@ -29,7 +31,7 @@
 
 ## 从源码构建
 
-环境要求：Node.js 18+、Rust（桌面端）、Android SDK/NDK（安卓端）。
+环境要求：Node.js 18+、Rust（桌面端）、Android SDK/NDK（安卓端）。以下命令均在 `apps/app` 目录执行。
 
 ```bash
 npm install
@@ -54,7 +56,7 @@ npx tauri android build --apk --target aarch64
 - `js/` — 前端逻辑（搜索聚合、播放器、豆瓣、设置）
 - `src-tauri/` — Tauri 壳（Rust）与平台配置
 - `public/` — Tauri 打包使用的前端目录（含安卓修正版）
-- `.github/workflows/release.yml` — 全平台发布流水线
+- 仓库根目录 `.github/workflows/app-release.yml` — 全平台发布流水线（本目录内不再单独维护工作流）
 
 ## 免责声明
 

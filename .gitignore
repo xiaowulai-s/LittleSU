@@ -14,9 +14,23 @@ apps/app/src-tauri/gen/
 # 环境变量与密钥（绝不入库）
 .env
 .env*
+!.env.example
+!**/.env.example
 *.key
 *.key.pub
 signing/
+
+# 调试日志
+*.log
+
+# 部署平台本地状态
+.vercel/
+.netlify/
+.edgeone/
+
+# 本地备份与迁移暂存
+.legacy-backup/
+.monorepo-stage/
 
 # 系统
 .DS_Store

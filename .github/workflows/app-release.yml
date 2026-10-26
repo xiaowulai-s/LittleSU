@@ -552,10 +552,10 @@ jobs:
         with:
           name: android-mipmap-resources-${{ github.ref_name }}
           path: |
-            src-tauri/gen/android/app/src/main/res/mipmap-*
-            src-tauri/gen/android/app/src/main/AndroidManifest.xml
-            src-tauri/gen/android/app/src/main/res/values/themes.xml
-            src-tauri/gen/android/app/src/main/res/values/styles.xml
+            apps/app/src-tauri/gen/android/app/src/main/res/mipmap-*
+            apps/app/src-tauri/gen/android/app/src/main/AndroidManifest.xml
+            apps/app/src-tauri/gen/android/app/src/main/res/values/themes.xml
+            apps/app/src-tauri/gen/android/app/src/main/res/values/styles.xml
           if-no-files-found: warn # Use warn to not fail the build if a file is missing, but log it
 
       - name: Get AAB Signature Info using bundletool
@@ -640,7 +640,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-aab-debug-${{ github.ref_name }}
-          path: ${{ steps.check_aab.outputs.aab_file_path }}
+          path: apps/app/${{ steps.check_aab.outputs.aab_file_path }}
           if-no-files-found: error
 
       - name: Debug after Upload AAB
@@ -686,15 +686,15 @@ jobs:
       - name: Debug before Upload Split APKS
         run: |
           echo "Attempting to upload Split APKS (unsigned) artifact."
-          echo "Split APKS Path: ${{ github.workspace }}/app_bundle_split_unsigned.apks"
-          ls -lh ${{ github.workspace }}/app_bundle_split_unsigned.apks || echo "Split APKS file (unsigned) not found at path for ls command."
+          echo "Split APKS Path: ${{ github.workspace }}/apps/app/app_bundle_split_unsigned.apks"
+          ls -lh ${{ github.workspace }}/apps/app/app_bundle_split_unsigned.apks || echo "Split APKS file (unsigned) not found at path for ls command."
         shell: bash
 
       - name: Upload Split APKS (unsigned) for debugging
         uses: actions/upload-artifact@v4
         with:
           name: android-split-apks-unsigned-debug-${{ github.ref_name }}
-          path: app_bundle_split_unsigned.apks # This path is relative to GITHUB_WORKSPACE
+          path: apps/app/app_bundle_split_unsigned.apks # 相对 GITHUB_WORKSPACE（uses 步骤不受 working-directory 影响）
           if-no-files-found: error
       
       - name: Debug after Upload Split APKS
@@ -854,7 +854,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_universal_apk.outputs.signed_apk_path }} # Use path from apksigner step
+          asset_path: apps/app/${{ steps.sign_universal_apk.outputs.signed_apk_path }} # Use path from apksigner step
           asset_name: LittleSU-TV-${{ github.ref_name }}-android-universal.apk
           asset_content_type: application/vnd.android.package-archive
 
@@ -865,7 +865,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_armeabi_v7a_apk.outputs.signed_apk_path }}
+          asset_path: apps/app/${{ steps.sign_armeabi_v7a_apk.outputs.signed_apk_path }}
           asset_name: LittleSU-TV-${{ github.ref_name }}-android-armeabi-v7a.apk
           asset_content_type: application/vnd.android.package-archive
 
@@ -907,7 +907,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_arm64_v8a_apk.outputs.signed_apk_path }}
+          asset_path: apps/app/${{ steps.sign_arm64_v8a_apk.outputs.signed_apk_path }}
           asset_name: LittleSU-TV-${{ github.ref_name }}-android-arm64-v8a.apk
           asset_content_type: application/vnd.android.package-archive
 
@@ -949,7 +949,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_x86_apk.outputs.signed_apk_path }}
+          asset_path: apps/app/${{ steps.sign_x86_apk.outputs.signed_apk_path }}
           asset_name: LittleSU-TV-${{ github.ref_name }}-android-x86.apk
           asset_content_type: application/vnd.android.package-archive
 
@@ -991,6 +991,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.sign_x86_64_apk.outputs.signed_apk_path }}
+          asset_path: apps/app/${{ steps.sign_x86_64_apk.outputs.signed_apk_path }}
           asset_name: LittleSU-TV-${{ github.ref_name }}-android-x86_64.apk
           asset_content_type: application/vnd.android.package-archive
