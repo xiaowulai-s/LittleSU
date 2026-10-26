@@ -500,7 +500,6 @@ async fn make_http_request(options: HttpRequestOptions) -> Result<HttpResponse, 
 
 // use tauri_plugin_log::{Builder, Target}; // Temporarily commented out
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 fn stream_default_referer(url: &str) -> String {
     reqwest::Url::parse(url)
         .ok()
@@ -550,6 +549,7 @@ async fn fetch_bytes_native(url: String) -> Result<tauri::ipc::Response, String>
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   // let mut log_builder = Builder::default(); // Temporarily commented out
   // log_builder = log_builder.target(Target::Stdout); // Temporarily commented out

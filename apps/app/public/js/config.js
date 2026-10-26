@@ -16,7 +16,7 @@ const SITE_CONFIG = {
     url: 'https://github.com/xiaowulai-s/LittleSU',
     description: '免费在线视频搜索与观看平台',
     logo: './image/retrotv_5520.png',
-    version: '1.2.6'
+    version: '1.2.7'
 };
 
 // API站点配置
