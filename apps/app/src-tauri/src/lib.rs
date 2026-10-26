@@ -53,6 +53,20 @@ static API_SITES_CONFIG: Lazy<HashMap<String, ApiSourceInfo>> = Lazy::new(|| {
         api_type: ApiType::Json,
         search_path: None, detail_path: None,
     });
+    m.insert("lzi".to_string(), ApiSourceInfo {
+        api_base_url: "https://cj.lziapi.com".to_string(),
+        name: "量子资源".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
+    m.insert("ffzyapi".to_string(), ApiSourceInfo {
+        api_base_url: "https://cj.ffzyapi.com".to_string(),
+        name: "非凡资源".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
     m.insert("tyyszy".to_string(), ApiSourceInfo {
         api_base_url: "https://tyyszy.com".to_string(),
         name: "天涯资源".to_string(),

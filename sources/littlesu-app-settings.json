@@ -1,0 +1,11 @@
+{
+  "name": "LittleSU TV-Settings",
+  "time": "1792980955989",
+  "cfgVer": "1.0.0",
+  "data": {
+    "customAPIs": "[{\"name\":\"量子资源\",\"url\":\"https://cj.lziapi.com\",\"detail\":\"\",\"isAdult\":false},{\"name\":\"非凡影视\",\"url\":\"http://ffzy5.tv\",\"detail\":\"\",\"isAdult\":false},{\"name\":\"非凡资源\",\"url\":\"https://cj.ffzyapi.com\",\"detail\":\"\",\"isAdult\":false},{\"name\":\"暴风资源\",\"url\":\"https://bfzyapi.com\",\"detail\":\"\",\"isAdult\":false},{\"name\":\"360资源\",\"url\":\"https://360zy.com\",\"detail\":\"\",\"isAdult\":false},{\"name\":\"电影天堂\",\"url\":\"https://caiji.dyttzyapi.com\",\"detail\":\"\",\"isAdult\":false},{\"name\":\"极速资源\",\"url\":\"https://jszyapi.com\",\"detail\":\"\",\"isAdult\":false},{\"name\":\"最大资源\",\"url\":\"https://api.zuidapi.com\",\"detail\":\"\",\"isAdult\":false}]",
+    "selectedAPIs": "[\"custom_0\",\"custom_1\",\"custom_2\",\"custom_3\",\"custom_4\",\"custom_5\",\"custom_6\",\"custom_7\"]",
+    "hasInitializedDefaults": "true"
+  },
+  "hash": "ad7e5d8d6a67bfdc18ec066d7d5786d2affa8523781d3ab064c07612b20226e4"
+}

@@ -29,11 +29,11 @@ LittleSU/
 两个子项目共用同一版本号。发版时先同步版本号，再推送标签：
 
 ```bash
-(cd apps/web && npm version 1.2.4 --no-git-tag-version)
-(cd apps/app && npm version 1.2.4 --no-git-tag-version)
+(cd apps/web && npm version <x.y.z> --no-git-tag-version)
+(cd apps/app && npm version <x.y.z> --no-git-tag-version)
 # 手动同步 apps/app/src-tauri/tauri.conf.json 的 version 字段
-git commit -am "v1.2.4：版本号同步"
-git tag v1.2.4 && git push origin main v1.2.4
+git commit -am "v<x.y.z>：版本号同步"
+git tag v<x.y.z> && git push origin main v<x.y.z>
 ```
 
 | 工作流 | 触发 | 产物 |
@@ -58,6 +58,14 @@ cd apps/app && npm install && npx tauri dev
 - 原网页版仓库 [`LittleSU_TV`](https://github.com/xiaowulai-s/LittleSU_TV) 与原客户端仓库 [`LittleSU-TV-App`](https://github.com/xiaowulai-s/LittleSU-TV-App) 已归档（只读），代码分别迁入 `apps/web` 与 `apps/app`；旧提交历史与旧 Release 保留在原仓库。
 - 新版本统一发布在本仓库的 [Releases](https://github.com/xiaowulai-s/LittleSU/releases)。
 - 迁移与归档明细见 [docs/ARCHIVE.md](./docs/ARCHIVE.md)。
+
+## 推荐源
+
+仓库内置一份实测可用的源清单，用户无需自行收集：
+
+- **网页版**：设置 → 数据源订阅，粘贴 `https://raw.githubusercontent.com/xiaowulai-s/LittleSU/main/sources/littlesu-sources.json` 即可导入 8 个点播源 + 3 个直播源。
+- **独立客户端**：v1.2.5 起内置 8 个源并默认选中，安装即用；旧版本可导入 `sources/littlesu-app-settings.json`。
+- 清单维护方式、免责声明与复测记录见 [`sources/README.md`](./sources/README.md)。
 
 ## 免责声明
 

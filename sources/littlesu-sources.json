@@ -1,0 +1,28 @@
+{
+  "name": "LittleSU 推荐源（2026-10-26 实测）",
+  "sources": [
+    { "name": "量子资源", "url": "https://cj.lziapi.com/api.php/provide/vod" },
+    { "name": "非凡影视", "url": "https://ffzy5.tv/api.php/provide/vod" },
+    { "name": "非凡资源", "url": "https://cj.ffzyapi.com/api.php/provide/vod" },
+    { "name": "暴风资源", "url": "https://bfzyapi.com/api.php/provide/vod" },
+    { "name": "360资源", "url": "https://360zy.com/api.php/provide/vod" },
+    { "name": "电影天堂", "url": "https://caiji.dyttzyapi.com/api.php/provide/vod" },
+    { "name": "极速资源", "url": "https://jszyapi.com/api.php/provide/vod" },
+    { "name": "最大资源", "url": "https://api.zuidapi.com/api.php/provide/vod" }
+  ],
+  "liveSources": [
+    {
+      "name": "IPTV·中国",
+      "url": "https://iptv-org.github.io/iptv/countries/cn.m3u",
+      "epg": "https://epg.pw/xmltv/epg_CN.xml"
+    },
+    {
+      "name": "IPTV·电影",
+      "url": "https://iptv-org.github.io/iptv/categories/movies.m3u"
+    },
+    {
+      "name": "IPTV·纪录片",
+      "url": "https://iptv-org.github.io/iptv/categories/documentary.m3u"
+    }
+  ]
+}

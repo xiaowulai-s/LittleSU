@@ -46,6 +46,12 @@ npx tauri android build --apk --target aarch64
 
 推送 `v*` 标签会触发 GitHub Actions 自动构建全平台安装包并发布 Release。
 
+## 内置源
+
+v1.2.5 起内置 8 个直连源，安装后默认全部选中：量子资源、非凡影视、非凡资源、暴风资源、360资源、电影天堂、极速资源、最大资源。
+
+源站可能失效，可在「设置 → 数据源管理」中单独停用；旧版本可导入仓库根目录 `sources/littlesu-app-settings.json` 获得同一清单。
+
 ## 修改内置采集源
 
 编辑 `js/config.js` 中的 `API_SITES`（标准苹果CMS JSON 接口格式），推 `v*` 标签重新发布即可。

@@ -58,8 +58,8 @@ function initializeApp() {
     
     // 设置默认API选择（如果是第一次加载）
     if (!localStorage.getItem('hasInitializedDefaults')) {
-        // 仅选择天涯资源、暴风资源和如意资源
-        selectedAPIs = ["tyyszy","xiaomaomi", "bfzy","dyttzy", "ruyi"];
+        // 默认选中全部内置源
+        selectedAPIs = ["lzi","ffzy","ffzyapi","bfzy","zy360","dyttzy","jisu","zuid"];
         localStorage.setItem('selectedAPIs', JSON.stringify(selectedAPIs));
         
         // 默认选中过滤开关

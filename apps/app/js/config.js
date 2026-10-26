@@ -16,7 +16,7 @@ const SITE_CONFIG = {
     url: 'https://github.com/xiaowulai-s/LittleSU',
     description: '免费在线视频搜索与观看平台',
     logo: './image/retrotv_5520.png',
-    version: '1.2.4'
+    version: '1.2.5'
 };
 
 // API站点配置
@@ -26,6 +26,10 @@ const API_SITES = {
         name: '量子资源',
     },
     ffzy: {
+        api: 'http://ffzy5.tv',
+        name: '非凡影视',
+    },
+    ffzyapi: {
         api: 'https://cj.ffzyapi.com',
         name: '非凡资源',
     },
@@ -36,6 +40,18 @@ const API_SITES = {
     zy360: {
         api: 'https://360zy.com',
         name: '360资源',
+    },
+    dyttzy: {
+        api: 'https://caiji.dyttzyapi.com',
+        name: '电影天堂',
+    },
+    jisu: {
+        api: 'https://jszyapi.com',
+        name: '极速资源',
+    },
+    zuid: {
+        api: 'https://api.zuidapi.com',
+        name: '最大资源',
     },
 };
 
