@@ -87,19 +87,23 @@ async function executeApiRequest(apiUrl, options = {}) {
                 throw createApiError(errMsg, response.status);
             }
 
-            try {
-                responseData = JSON.parse(responseText);
-            } catch (parseError) {
-                const errorDetails = `${logPrefix}内容解析失败. Content-Type: ${contentType}. URL: ${fetchUrlToUse}. Error: ${parseError.message}. Body chunk: ${responseText.substring(0,500)}`;
-                console.error(`[executeApiRequest] JSON Parse error:`, errorDetails);
-                if (!contentType || !contentType.includes('application/json')) {
-                    throw createApiError(`${logPrefix}API返回的不是有效的JSON格式，且内容解析失败。接收到 Content-Type: ${contentType}. 内容: ${responseText.substring(0,100)}...`);
+            if (asText) {
+                responseData = responseText;
+            } else {
+                try {
+                    responseData = JSON.parse(responseText);
+                } catch (parseError) {
+                    const errorDetails = `${logPrefix}内容解析失败. Content-Type: ${contentType}. URL: ${fetchUrlToUse}. Error: ${parseError.message}. Body chunk: ${responseText.substring(0,500)}`;
+                    console.error(`[executeApiRequest] JSON Parse error:`, errorDetails);
+                    if (!contentType || !contentType.includes('application/json')) {
+                        throw createApiError(`${logPrefix}API返回的不是有效的JSON格式，且内容解析失败。接收到 Content-Type: ${contentType}. 内容: ${responseText.substring(0,100)}...`);
+                    }
+                    throw createApiError(`${logPrefix}API返回了application/json类型，但JSON内容无效。错误: ${parseError.message}. 内容: ${responseText.substring(0,100)}...`);
                 }
-                throw createApiError(`${logPrefix}API返回了application/json类型，但JSON内容无效。错误: ${parseError.message}. 内容: ${responseText.substring(0,100)}...`);
             }
             
             // Log if content type was not JSON but parsing succeeded (might indicate misconfigured server)
-            if (contentType && !contentType.includes('application/json')) {
+            if (!asText && contentType && !contentType.includes('application/json')) {
                 console.warn(`[executeApiRequest] ${logPrefix}Response parsed as JSON, but Content-Type was '${contentType}'. URL: ${fetchUrlToUse}`);
             }
 

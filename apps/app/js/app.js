@@ -1,5 +1,5 @@
 // 全局变量
-let selectedAPIs = JSON.parse(localStorage.getItem('selectedAPIs') || '["lzi","ffzy","ffzyapi","bfzy","zy360","dyttzy","jisu","zuid"]'); // 默认选中 8 个内置源
+let selectedAPIs = JSON.parse(localStorage.getItem('selectedAPIs') || '["lzi","ffzy","ffzyapi","bfzy","zy360","dyttzy","jisu","zuid","tyyszy","lovedan"]'); // 默认选中实测可用的 10 个源
 let customAPIs = JSON.parse(localStorage.getItem('customAPIs') || '[]'); // 存储自定义API列表
 
 // 添加当前播放的集数索引
@@ -27,8 +27,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 设置默认API选择（如果是第一次加载）
     if (!localStorage.getItem('hasInitializedDefaults')) {
-        // 默认选中全部内置源
-        selectedAPIs = ["lzi","ffzy","ffzyapi","bfzy","zy360","dyttzy","jisu","zuid"];
+        // 默认选中实测可用的源，其余内置源可在设置中勾选
+        selectedAPIs = ["lzi","ffzy","ffzyapi","bfzy","zy360","dyttzy","jisu","zuid","tyyszy","lovedan"];
         localStorage.setItem('selectedAPIs', JSON.stringify(selectedAPIs));
         
         // 默认选中过滤开关

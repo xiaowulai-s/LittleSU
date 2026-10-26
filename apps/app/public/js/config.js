@@ -16,7 +16,7 @@ const SITE_CONFIG = {
     url: 'https://github.com/xiaowulai-s/LittleSU',
     description: '免费在线视频搜索与观看平台',
     logo: './image/retrotv_5520.png',
-    version: '1.2.5'
+    version: '1.2.6'
 };
 
 // API站点配置
@@ -53,7 +53,84 @@ const API_SITES = {
         api: 'https://api.zuidapi.com',
         name: '最大资源',
     },
+    tyyszy: {
+        api: 'https://tyyszy.com',
+        name: '天涯资源',
+    },
+    lovedan: {
+        api: 'http://lovedan.net',
+        name: '艾旦资源',
+    },
+    xiaomaomi: {
+        api: 'https://zy.xiaomaomi.cc',
+        name: '小猫咪资源（备用）',
+    },
+    ruyi: {
+        api: 'https://cj.rycjapi.com',
+        name: '如意资源（备用）',
+    },
+    dbzy: {
+        api: 'https://dbzy.com',
+        name: '豆瓣资源（备用）',
+    },
+    mozhua: {
+        api: 'https://mozhuazy.com',
+        name: '魔爪资源（备用）',
+    },
+    yinghua: {
+        api: 'https://m3u8.apiyhzy.com',
+        name: '樱花资源（备用）',
+    },
+    wwzy: {
+        api: 'https://wwzy.tv',
+        name: '旺旺短剧（备用）',
+    },
+    ikun: {
+        api: 'https://ikunzyapi.com',
+        name: 'iKun资源（备用）',
+    },
+    zuidazy: {
+        api: 'http://zuidazy.me',
+        name: '最大资源2（备用）',
+    },
+    ffzy2: {
+        api: 'https://ffzy.tv',
+        name: '非凡2（备用）',
+    },
+    hongniu: {
+        api: 'https://www.hongniuzy2.com',
+        name: '红牛资源（备用）',
+    },
+    subocj: {
+        api: 'https://subocj.com',
+        name: '速播资源（备用）',
+    },
+    modu: {
+        api: 'https://caiji.moduapi.cc',
+        name: '魔都资源（备用）',
+    },
+    heimuer: {
+        api: 'https://json.heimuer.xyz',
+        name: '黑木耳（HTML实验）',
+    },
+    wolong: {
+        api: 'https://wolongzyw.com',
+        name: '卧龙资源（HTML实验）',
+    },
+    hwba: {
+        api: 'https://cjhwba.com',
+        name: '华为吧（HTML实验）',
+    },
 };
+
+// 内置直播源（M3U / 纯文本频道列表）
+const LIVE_SOURCES = [
+    { name: 'IPTV·中国', url: 'https://iptv-org.github.io/iptv/countries/cn.m3u', epg: 'https://epg.pw/xmltv/epg_CN.xml' },
+    { name: 'IPTV·香港', url: 'https://iptv-org.github.io/iptv/countries/hk.m3u' },
+    { name: 'IPTV·电影', url: 'https://iptv-org.github.io/iptv/categories/movies.m3u' },
+    { name: 'IPTV·纪录片', url: 'https://iptv-org.github.io/iptv/categories/documentary.m3u' },
+    { name: '简单TV', url: 'http://iptv.ruyitv.cc/m3u/tv.txt' },
+];
 
 // 添加聚合搜索的配置选项
 const AGGREGATED_SEARCH_CONFIG = {

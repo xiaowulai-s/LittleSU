@@ -67,6 +67,48 @@ static API_SITES_CONFIG: Lazy<HashMap<String, ApiSourceInfo>> = Lazy::new(|| {
         api_type: ApiType::Json,
         search_path: None, detail_path: None,
     });
+    m.insert("lovedan".to_string(), ApiSourceInfo {
+        api_base_url: "http://lovedan.net".to_string(),
+        name: "艾旦资源".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
+    m.insert("zuidazy".to_string(), ApiSourceInfo {
+        api_base_url: "http://zuidazy.me".to_string(),
+        name: "最大资源2".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
+    m.insert("ffzy2".to_string(), ApiSourceInfo {
+        api_base_url: "https://ffzy.tv".to_string(),
+        name: "非凡2".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
+    m.insert("hongniu".to_string(), ApiSourceInfo {
+        api_base_url: "https://www.hongniuzy2.com".to_string(),
+        name: "红牛资源".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
+    m.insert("subocj".to_string(), ApiSourceInfo {
+        api_base_url: "https://subocj.com".to_string(),
+        name: "速播资源".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
+    m.insert("modu".to_string(), ApiSourceInfo {
+        api_base_url: "https://caiji.moduapi.cc".to_string(),
+        name: "魔都资源".to_string(),
+        detail_base_url: None,
+        api_type: ApiType::Json,
+        search_path: None, detail_path: None,
+    });
     m.insert("tyyszy".to_string(), ApiSourceInfo {
         api_base_url: "https://tyyszy.com".to_string(),
         name: "天涯资源".to_string(),
@@ -459,6 +501,55 @@ async fn make_http_request(options: HttpRequestOptions) -> Result<HttpResponse, 
 // use tauri_plugin_log::{Builder, Target}; // Temporarily commented out
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+fn stream_default_referer(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .map(|u| format!("{}://{}/", u.scheme(), u.host_str().unwrap_or("")))
+        .unwrap_or_else(|| url.to_string())
+}
+
+// 原生取流：供直播页的 hls.js 自定义 loader 使用，绕过 WebView 的 CORS 限制
+#[tauri::command]
+async fn fetch_text_native(url: String) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .get(&url)
+        .header(USER_AGENT, "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36")
+        .header(reqwest::header::ACCEPT, "*/*")
+        .header(reqwest::header::REFERER, stream_default_referer(&url))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("HTTP {}", res.status()));
+    }
+    res.text().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn fetch_bytes_native(url: String) -> Result<tauri::ipc::Response, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client
+        .get(&url)
+        .header(USER_AGENT, "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36")
+        .header(reqwest::header::ACCEPT, "*/*")
+        .header(reqwest::header::REFERER, stream_default_referer(&url))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("HTTP {}", res.status()));
+    }
+    let bytes = res.bytes().await.map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes.to_vec()))
+}
+
 pub fn run() {
   // let mut log_builder = Builder::default(); // Temporarily commented out
   // log_builder = log_builder.target(Target::Stdout); // Temporarily commented out
@@ -476,7 +567,9 @@ pub fn run() {
     // )
     .invoke_handler(tauri::generate_handler![
         make_http_request,
-        search_videos
+        search_videos,
+        fetch_text_native,
+        fetch_bytes_native
         // 如果您有其他 command，请在此处添加，用逗号分隔
         // e.g., another_command, yet_another_command
     ])

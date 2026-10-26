@@ -1,20 +1,116 @@
 {
-  "name": "LittleSU 推荐源（2026-10-26 实测）",
+  "name": "LittleSU 全量源清单（2026-10-26 实测）",
   "sources": [
-    { "name": "量子资源", "url": "https://cj.lziapi.com/api.php/provide/vod" },
-    { "name": "非凡影视", "url": "https://ffzy5.tv/api.php/provide/vod" },
-    { "name": "非凡资源", "url": "https://cj.ffzyapi.com/api.php/provide/vod" },
-    { "name": "暴风资源", "url": "https://bfzyapi.com/api.php/provide/vod" },
-    { "name": "360资源", "url": "https://360zy.com/api.php/provide/vod" },
-    { "name": "电影天堂", "url": "https://caiji.dyttzyapi.com/api.php/provide/vod" },
-    { "name": "极速资源", "url": "https://jszyapi.com/api.php/provide/vod" },
-    { "name": "最大资源", "url": "https://api.zuidapi.com/api.php/provide/vod" }
+    {
+      "name": "量子资源",
+      "url": "https://cj.lziapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "非凡影视",
+      "url": "http://ffzy5.tv/api.php/provide/vod"
+    },
+    {
+      "name": "非凡资源",
+      "url": "https://cj.ffzyapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "暴风资源",
+      "url": "https://bfzyapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "360资源",
+      "url": "https://360zy.com/api.php/provide/vod"
+    },
+    {
+      "name": "电影天堂",
+      "url": "https://caiji.dyttzyapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "极速资源",
+      "url": "https://jszyapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "最大资源",
+      "url": "https://api.zuidapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "天涯资源",
+      "url": "https://tyyszy.com/api.php/provide/vod"
+    },
+    {
+      "name": "艾旦资源",
+      "url": "http://lovedan.net/api.php/provide/vod"
+    },
+    {
+      "name": "小猫咪资源（备用）",
+      "url": "https://zy.xiaomaomi.cc/api.php/provide/vod"
+    },
+    {
+      "name": "如意资源（备用）",
+      "url": "https://cj.rycjapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "豆瓣资源（备用）",
+      "url": "https://dbzy.com/api.php/provide/vod"
+    },
+    {
+      "name": "魔爪资源（备用）",
+      "url": "https://mozhuazy.com/api.php/provide/vod"
+    },
+    {
+      "name": "樱花资源（备用）",
+      "url": "https://m3u8.apiyhzy.com/api.php/provide/vod"
+    },
+    {
+      "name": "旺旺短剧（备用）",
+      "url": "https://wwzy.tv/api.php/provide/vod"
+    },
+    {
+      "name": "iKun资源（备用）",
+      "url": "https://ikunzyapi.com/api.php/provide/vod"
+    },
+    {
+      "name": "最大资源2（备用）",
+      "url": "http://zuidazy.me/api.php/provide/vod"
+    },
+    {
+      "name": "非凡2（备用）",
+      "url": "https://ffzy.tv/api.php/provide/vod"
+    },
+    {
+      "name": "红牛资源（备用）",
+      "url": "https://www.hongniuzy2.com/api.php/provide/vod"
+    },
+    {
+      "name": "速播资源（备用）",
+      "url": "https://subocj.com/api.php/provide/vod"
+    },
+    {
+      "name": "魔都资源（备用）",
+      "url": "https://caiji.moduapi.cc/api.php/provide/vod"
+    },
+    {
+      "name": "黑木耳（HTML实验）",
+      "url": "https://json.heimuer.xyz/api.php/provide/vod"
+    },
+    {
+      "name": "卧龙资源（HTML实验）",
+      "url": "https://wolongzyw.com/api.php/provide/vod"
+    },
+    {
+      "name": "华为吧（HTML实验）",
+      "url": "https://cjhwba.com/api.php/provide/vod"
+    }
   ],
   "liveSources": [
     {
       "name": "IPTV·中国",
       "url": "https://iptv-org.github.io/iptv/countries/cn.m3u",
       "epg": "https://epg.pw/xmltv/epg_CN.xml"
+    },
+    {
+      "name": "IPTV·香港",
+      "url": "https://iptv-org.github.io/iptv/countries/hk.m3u"
     },
     {
       "name": "IPTV·电影",

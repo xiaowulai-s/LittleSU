@@ -61,11 +61,11 @@ cd apps/app && npm install && npx tauri dev
 
 ## 推荐源
 
-仓库内置一份实测可用的源清单，用户无需自行收集：
+仓库内置一份实测/整理的源清单，用户无需自行收集：
 
-- **网页版**：设置 → 数据源订阅，粘贴 `https://raw.githubusercontent.com/xiaowulai-s/LittleSU/main/sources/littlesu-sources.json` 即可导入 8 个点播源 + 3 个直播源。
-- **独立客户端**：v1.2.5 起内置 8 个源并默认选中，安装即用；旧版本可导入 `sources/littlesu-app-settings.json`。
-- 清单维护方式、免责声明与复测记录见 [`sources/README.md`](./sources/README.md)。
+- **网页版**：设置 → 数据源订阅，粘贴 `https://raw.githubusercontent.com/xiaowulai-s/LittleSU/main/sources/littlesu-sources.json` 即可导入 25 个点播源 + 4 个直播源。
+- **独立客户端**：v1.2.6 起内置全部 25 个点播源和 5 个直播源（新增「直播」页），默认勾选 10 个实测可用源，其余可在设置中启用；旧版本可导入 `sources/littlesu-app-settings.json`。
+- 每个源的状态、默认选中项和免责声明见 [`sources/README.md`](./sources/README.md)。
 
 ## 免责声明
 
