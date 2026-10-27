@@ -2498,3 +2498,29 @@ h1, h2, h3, p { margin: 0; }
 }
 .live-status-line svg { color: var(--accent); }
 .source-row .switch[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ---------- 独立客户端（Tauri）内不使用原型预览外框 ---------- */
+
+.app-standalone {
+  height: 100vh;
+  overflow: hidden;
+}
+.app-standalone .shell { height: 100%; }
+.app-standalone .windows-main,
+.app-standalone .android-main { min-height: 0; }
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(129, 140, 248, .32);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 11.5px;
+}
+.update-banner svg { color: var(--accent); flex-shrink: 0; }
+.update-banner p { flex: 1; color: var(--text-2); }
+.update-banner strong { color: var(--accent); }

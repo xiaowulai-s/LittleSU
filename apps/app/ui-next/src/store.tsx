@@ -24,6 +24,8 @@ import {
 } from './lib/storage';
 import type { FavoriteRecord, HistoryRecord, PlaybackSettings } from './lib/storage';
 import { cacheTitle, findAnyTitle } from './lib/titleCache';
+import { checkForUpdate } from './lib/update';
+import type { UpdateInfo } from './lib/update';
 
 export type Device = 'windows' | 'android';
 export type ThemeMode = 'dark' | 'light' | 'system';
@@ -59,6 +61,8 @@ interface AppState {
   openTitle: (key: string) => void;
   closeDrawer: () => void;
   getTitle: (key: string | undefined) => Title | undefined;
+  updateInfo: UpdateInfo | null;
+  checkUpdate: () => Promise<UpdateInfo | null>;
   toast: (message: string, tone?: ToastTone) => void;
   toasts: ToastItem[];
 }
@@ -100,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [customApis] = useState<CustomApi[]>(() => loadCustomApis());
   const [settings, setSettings] = useState<PlaybackSettings>(() => loadSettings());
   const [drawerId, setDrawerId] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   useEffect(() => {
@@ -191,6 +196,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const getTitle = useCallback((key: string | undefined) => findAnyTitle(key, mockTitles), []);
 
+  const checkUpdate = useCallback(async () => {
+    const info = await checkForUpdate();
+    setUpdateInfo(info);
+    return info;
+  }, []);
+
   const openTitle = useCallback(
     (key: string) => {
       const title = getTitle(key);
@@ -234,6 +245,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openTitle,
       closeDrawer,
       getTitle,
+      updateInfo,
+      checkUpdate,
       toast,
       toasts,
     }),
@@ -260,6 +273,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openTitle,
       closeDrawer,
       getTitle,
+      updateInfo,
+      checkUpdate,
       toast,
       toasts,
     ],

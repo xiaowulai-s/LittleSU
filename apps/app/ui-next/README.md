@@ -1,6 +1,6 @@
 # Lightframe · LittleSU TV 新前端
 
-LittleSU TV 独立客户端（Windows + Android）的新界面与新数据层：React + Vite + TypeScript。旧版 `apps/app/public` 未改动，Tauri 入口仍指向旧界面。
+LittleSU TV 独立客户端（Windows + Android）的新界面与新数据层：React + Vite + TypeScript。v1.3.0 起为客户端正式入口；旧版 `apps/app/public` 仍保留在仓库中用于回滚。
 
 ## 运行（浏览器预览）
 
@@ -12,22 +12,31 @@ npm run dev
 
 打开 http://localhost:5174
 
-- 底部悬浮工具条可切换 **Windows / Android** 与 **深色 / 浅色**
+- 默认显示**原型预览外框**：底部工具条可切换 **Windows / Android** 与 **深色 / 浅色**
+- 在链接后加 `&standalone=1`（放在 `#` 之前）可隐藏预览外框，模拟客户端真实全屏布局：
+  `http://localhost:5174/?standalone=1&device=windows&theme=dark#/`
 - 浏览器内没有 Tauri 命令，搜索会自动回退到示例数据；直播仍可直接解析公开 M3U
+
+![客户端界面](./docs/screenshots/app-windows.png)
 
 ## 在 Tauri 中运行
 
-```bash
-# 终端 1：启动新前端
-cd apps/app/ui-next && npm run dev
+v1.3.0 起客户端入口已切换到本前端（`apps/app/src-tauri/tauri.conf.json` 的 `frontendDist` 指向 `ui-next/dist`），
+`beforeDevCommand` / `beforeBuildCommand` 会自动处理前端构建。
 
-# 终端 2：用新前端配置启动客户端（旧版 public 不受影响）
-cd apps/app/src-tauri
-npx tauri dev --config tauri.ui-next.conf.json
+```bash
+# 开发：tauri dev 会自动启动 Vite（5174）并等待其就绪
+cd apps/app
+npm run dev
+
+# 打包：自动执行 npm ci + 前端构建，然后构建安装包
+cd apps/app
+npm run tauri build
 ```
 
-打包：先 `cd apps/app/ui-next && npm run build`，再执行
-`cd apps/app/src-tauri && npx tauri build --config tauri.ui-next.conf.json`。
+单独调试前端：`cd apps/app/ui-next && npm run dev`，浏览器打开 http://localhost:5174。
+
+旧版 `apps/app/public` 仍保留在仓库中，如需回滚，把 `frontendDist` 改回 `../public` 即可。
 
 ## 预览链接
 

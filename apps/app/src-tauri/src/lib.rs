@@ -549,6 +549,26 @@ async fn fetch_bytes_native(url: String) -> Result<tauri::ipc::Response, String>
     Ok(tauri::ipc::Response::new(bytes.to_vec()))
 }
 
+#[tauri::command]
+async fn window_minimize(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn window_toggle_maximize(window: tauri::WebviewWindow) -> Result<(), String> {
+    let maximized = window.is_maximized().unwrap_or(false);
+    if maximized {
+        window.unmaximize().map_err(|e| e.to_string())
+    } else {
+        window.maximize().map_err(|e| e.to_string())
+    }
+}
+
+#[tauri::command]
+async fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   // let mut log_builder = Builder::default(); // Temporarily commented out
@@ -560,6 +580,7 @@ pub fn run() {
   // }
   
   tauri::Builder::default()
+    .plugin(tauri_plugin_opener::init())
     // .plugin( // Temporarily commented out
         // log_builder
             // .level(log::LevelFilter::Debug) 
@@ -569,7 +590,10 @@ pub fn run() {
         make_http_request,
         search_videos,
         fetch_text_native,
-        fetch_bytes_native
+        fetch_bytes_native,
+        window_minimize,
+        window_toggle_maximize,
+        window_close
         // 如果您有其他 command，请在此处添加，用逗号分隔
         // e.g., another_command, yet_another_command
     ])

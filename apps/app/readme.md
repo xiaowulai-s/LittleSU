@@ -52,6 +52,19 @@ v1.2.7 起内置 25 个直连点播源，默认勾选 10 个实测可用源：�
 
 底部导航新增「直播」页，内置 5 个直播源（IPTV 中国/香港/电影/纪录片、简单TV），支持频道分组、搜索与 HLS 播放。
 
+## 界面与构建
+
+v1.3.0 起客户端界面切换为 `ui-next`（React + Vite + TypeScript，Lightframe 设计）：
+
+```bash
+cd apps/app
+npm run dev            # 自动启动 Vite（5174）与 Tauri
+npm run tauri build    # 自动 npm ci + 构建前端，再打包安装包
+npm run test:ui-next   # 前端解析层单测
+```
+
+旧版静态界面保留在 `public/`，如需回滚把 `src-tauri/tauri.conf.json` 的 `frontendDist` 改回 `../public`。
+
 源站可能失效，可在设置中单独停用；旧版本可导入仓库根目录 `sources/littlesu-app-settings.json` 获得同一清单。
 
 ## 修改内置采集源

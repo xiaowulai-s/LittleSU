@@ -85,7 +85,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # Specify your project's Node.js version
+          node-version: '22' # Vite 6 + React 19 需要较新的 Node
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -124,6 +124,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm install # Or yarn install, or pnpm install
+
+      - name: Build new frontend (ui-next)
+        run: |
+          npm --prefix ui-next ci --no-audit --no-fund
+          npm --prefix ui-next run build
+        shell: bash
 
       - name: Build Tauri application (Windows/Linux using tauri-action)
         if: matrix.os_desc == 'ubuntu-latest' || matrix.os_desc == 'windows-latest'
@@ -255,7 +261,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # Specify your project's Node.js version
+          node-version: '22' # Vite 6 + React 19 需要较新的 Node
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -303,6 +309,12 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm install # Or yarn install, or pnpm install
+
+      - name: Build new frontend (ui-next)
+        run: |
+          npm --prefix ui-next ci --no-audit --no-fund
+          npm --prefix ui-next run build
+        shell: bash
 
       - name: Clean up potentially problematic custom Android resources
         run: |

@@ -36,3 +36,4 @@
 4. 本地开发环境变量、签名私钥等敏感文件不入库；发布所需的签名材料通过 GitHub Secrets 注入。
 5. 本次归档同时修正了 Android 发布流水线的产物路径，v1.2.4 是单仓库首个包含 Android APK 的版本。
 6. v1.2.5 起客户端内置推荐源；v1.2.6/1.2.7 扩展为全部 25 个点播源（默认勾选 10 个可用源）并新增直播页，网页版提供同清单的订阅文件，见 [`sources/README.md`](../sources/README.md)。
+7. v1.3.0 起客户端界面切换为 `apps/app/ui-next`（React + Vite + TypeScript，Lightframe 设计），旧静态界面 `apps/app/public` 保留用于回滚。

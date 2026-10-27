@@ -5,8 +5,9 @@
 ```
 LittleSU/
 ├── apps/
-│   ├── web/    网页版（Next.js 15 + Tailwind，可部署到 Vercel / Netlify / Docker）
-│   └── app/    独立客户端（Tauri 2：Android APK + Windows / macOS / Linux 桌面端）
+│   ├── web/      网页版（Next.js 15 + Tailwind，可部署到 Vercel / Netlify / Docker）
+│   └── app/      独立客户端（Tauri 2：Android APK + Windows / macOS / Linux 桌面端）
+│       └── ui-next/ 客户端界面（React + Vite + TypeScript，v1.3.0 起为正式入口）
 ├── design/     品牌 LOGO 与设计源文件
 └── .github/    按路径过滤的双发布流水线
 ```

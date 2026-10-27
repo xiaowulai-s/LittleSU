@@ -6,6 +6,8 @@ import type { IconName } from './icons';
 import { useApp } from './store';
 import { Button, IconButton } from './ui';
 import { SOURCES } from './lib/sources';
+import { APP_VERSION } from './lib/version';
+import { closeWindow, minimizeWindow, toggleMaximizeWindow } from './lib/window';
 
 const navItems: { path: string; label: string; icon: IconName }[] = [
   { path: '/', label: '首页', icon: 'home' },
@@ -78,19 +80,24 @@ function ThemeButton() {
 
 function WindowControls() {
   const { toast } = useApp();
-  const notAvailable = () => toast('原型模式：窗口控制将在 Tauri 中生效');
+  const fallback = () => toast('窗口控制在客户端内生效');
   return (
     <div className="window-controls" aria-label="窗口控制">
-      <button type="button" aria-label="最小化" onClick={notAvailable}>—</button>
-      <button type="button" aria-label="最大化" onClick={notAvailable}>□</button>
-      <button type="button" className="win-close" aria-label="关闭" onClick={notAvailable}>×</button>
+      <button type="button" aria-label="最小化" onClick={() => { minimizeWindow().then((ok) => { if (!ok) fallback(); }); }}>—</button>
+      <button type="button" aria-label="最大化" onClick={() => { toggleMaximizeWindow().then((ok) => { if (!ok) fallback(); }); }}>□</button>
+      <button type="button" className="win-close" aria-label="关闭" onClick={() => { closeWindow().then((ok) => { if (!ok) fallback(); }); }}>×</button>
     </div>
   );
 }
 
 function TitleBar() {
+  const { toast } = useApp();
   return (
-    <header className="title-bar" data-tauri-drag-region>
+    <header
+      className="title-bar"
+      data-tauri-drag-region
+      onDoubleClick={() => { toggleMaximizeWindow().then((ok) => { if (!ok) toast('双击最大化（浏览器预览）'); }); }}
+    >
       <Brand compact />
       <div className="title-search"><GlobalSearch /></div>
       <div className="title-actions">
@@ -139,7 +146,7 @@ function Sidebar() {
           <p>{enabled} 个已启用源 · 原生取流</p>
           <Button size="sm" variant="ghost" icon="settings" onClick={() => navigate('/settings')}>管理数据源</Button>
         </div>
-        <div className="sidebar-version">v1.2.7 · Lightframe 原型</div>
+        <div className="sidebar-version">{`v${APP_VERSION}`} · Lightframe</div>
       </div>
     </aside>
   );

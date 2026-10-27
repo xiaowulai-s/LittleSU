@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import { SOURCES, customDefs } from '../lib/sources';
 import type { SourceDef } from '../lib/sources';
 import { KEYS } from '../lib/storage';
+import { APP_VERSION } from '../lib/version';
+import { openExternal } from '../lib/window';
 import { Icon } from '../icons';
 import type { IconName } from '../icons';
 import { useApp } from '../store';
@@ -98,6 +100,8 @@ export default function Settings() {
     customApis,
     clearHistory,
     history,
+    updateInfo,
+    checkUpdate,
     toast,
   } = useApp();
   const [params] = useSearchParams();
@@ -166,7 +170,7 @@ export default function Settings() {
           <h1>设置</h1>
           <p>外观、播放、数据源与本机数据。</p>
         </div>
-        <span className="settings-version">v1.2.7</span>
+        <span className="settings-version">v{APP_VERSION}</span>
       </div>
 
       <div className="settings-layout">
@@ -353,14 +357,33 @@ export default function Settings() {
           {section === 'about' && (
             <>
               <SettingCard title="LittleSU TV" description="免费在线视频搜索与观看平台 · 独立客户端">
-                <div className="about-row"><span>版本</span><strong>1.2.7</strong></div>
+                <div className="about-row"><span>版本</span><strong>{APP_VERSION}</strong></div>
                 <div className="about-row"><span>前端</span><strong>Lightframe · React</strong></div>
-                <div className="about-row"><span>仓库</span><button type="button" className="text-link" onClick={() => toast('https://github.com/xiaowulai-s/LittleSU')}>github.com/xiaowulai-s/LittleSU</button></div>
+                <div className="about-row"><span>仓库</span><button type="button" className="text-link" onClick={() => openExternal('https://github.com/xiaowulai-s/LittleSU')}>github.com/xiaowulai-s/LittleSU</button></div>
                 <div className="about-row"><span>许可证</span><strong>Apache-2.0</strong></div>
               </SettingCard>
               <SettingCard title="更新" description="检查 GitHub 上的最新版本。">
-                <SettingRow label="检查更新" description="当前版本 1.2.7">
-                  <Button size="sm" variant="primary" icon="refresh" onClick={() => toast('检查更新将在客户端内接入')}>检查更新</Button>
+                {updateInfo?.hasUpdate && (
+                  <div className="update-banner">
+                    <Icon name="sparkles" size={16} />
+                    <p>发现新版本 <strong>v{updateInfo.latest}</strong>，当前 v{APP_VERSION}</p>
+                    <Button size="sm" variant="primary" onClick={() => openExternal(updateInfo.url)}>前往下载</Button>
+                  </div>
+                )}
+                <SettingRow label="检查更新" description={`当前版本 ${APP_VERSION}`}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon="refresh"
+                    onClick={async () => {
+                      const info = await checkUpdate();
+                      if (!info) toast('检查更新失败，请稍后再试', 'warning');
+                      else if (info.hasUpdate) toast(`发现新版本 v${info.latest}`, 'success');
+                      else toast(`已是最新版本 v${APP_VERSION}`, 'success');
+                    }}
+                  >
+                    检查更新
+                  </Button>
                 </SettingRow>
               </SettingCard>
               <div className="about-note">
