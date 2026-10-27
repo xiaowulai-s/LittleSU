@@ -551,22 +551,46 @@ async fn fetch_bytes_native(url: String) -> Result<tauri::ipc::Response, String>
 
 #[tauri::command]
 async fn window_minimize(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.minimize().map_err(|e| e.to_string())
+    #[cfg(desktop)]
+    {
+        window.minimize().map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = window;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 async fn window_toggle_maximize(window: tauri::WebviewWindow) -> Result<(), String> {
-    let maximized = window.is_maximized().unwrap_or(false);
-    if maximized {
-        window.unmaximize().map_err(|e| e.to_string())
-    } else {
-        window.maximize().map_err(|e| e.to_string())
+    #[cfg(desktop)]
+    {
+        let maximized = window.is_maximized().unwrap_or(false);
+        if maximized {
+            window.unmaximize().map_err(|e| e.to_string())?;
+        } else {
+            window.maximize().map_err(|e| e.to_string())?;
+        }
     }
+    #[cfg(not(desktop))]
+    {
+        let _ = window;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 async fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.close().map_err(|e| e.to_string())
+    #[cfg(desktop)]
+    {
+        window.close().map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = window;
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
