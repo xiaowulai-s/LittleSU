@@ -74,6 +74,13 @@ npm run test:ui-next   # 前端解析层单测
 
 源站可能失效，可在设置中单独停用；旧版本可导入仓库根目录 `sources/littlesu-app-settings.json` 获得同一清单。
 
+## 更新链路（v1.4.1）
+
+- macOS 更新包在 ad-hoc 签名后重新打包并签名，更新后的应用与 DMG 安装的应用一致
+- Release 的 `latest.json` 包含 `darwin-aarch64`，Windows / Linux / macOS 都能收到应用内更新
+- 客户端开启 `requireSignedVersion`，拒绝签名版本与清单版本不一致的产物
+- 每个 Release 附带覆盖全部资产的 `SHA256SUMS`：`sha256sum -c SHA256SUMS`
+
 ## 修改内置采集源
 
 编辑 `js/config.js` 中的 `API_SITES`（标准苹果CMS JSON 接口格式），推 `v*` 标签重新发布即可。

@@ -33,9 +33,20 @@ LittleSU/
 ```bash
 (cd apps/web && npm version <x.y.z> --no-git-tag-version)
 (cd apps/app && npm version <x.y.z> --no-git-tag-version)
-# 手动同步 apps/app/src-tauri/tauri.conf.json 的 version 字段
+(cd apps/app/ui-next && npm version <x.y.z> --no-git-tag-version)
+# 再同步 apps/app/src-tauri/tauri.conf.json、Cargo.toml 与 ui-next/src/lib/version.ts
 git commit -am "v<x.y.z>：版本号同步"
 git tag v<x.y.z> && git push origin main v<x.y.z>
+```
+
+工作流跑完后由 `finalize_release` 统一收尾：
+
+- 把 macOS（`darwin-aarch64`）条目合并进 `latest.json`，桌面端各平台都能收到更新；
+- 用 updater 公钥对 `latest.json` 里的每个平台产物做 minisign 校验，并核对签名内嵌版本与清单版本一致；
+- 生成覆盖全部发布资产的 `SHA256SUMS`，下载后可自检：
+
+```bash
+sha256sum -c SHA256SUMS
 ```
 
 | 工作流 | 触发 | 产物 |

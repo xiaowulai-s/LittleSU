@@ -57,7 +57,7 @@ npm run tauri build
 - 搜索：调用 Tauri 命令 `search_videos` 并行聚合已启用源，跨源去重、失败源提示；浏览器内自动回退示例数据
 - 详情：按 `ids` 拉取 CMS 详情，解析剧集与简介；HTML 详情源做 m3u8 兜底
 - 播放：hls.js + `fetch_text_native` / `fetch_bytes_native` 自定义 loader，绕过 WebView CORS；分享页解析、音量/静音、全屏、广告过滤、记忆进度、自动连播与失败自动换源
-- 桌面更新：设置页与启动检查均可下载并安装更新（Tauri updater），安装完成后自动重启；Android 引导下载 APK
+- 桌面更新：设置页与启动检查均可下载并安装更新（Tauri updater），安装完成后自动重启；Android 引导下载 APK（v1.4.1 起 macOS 也进入 `latest.json`，并启用 `requireSignedVersion` 绑定签名版本）
 - 源测活：真实搜索测活、延迟/失败展示并持久化
 - 直播：真实解析 5 个内置 M3U / TXT 源（分组、搜索、频道播放）
 - 设置：导出 / 导入配置（含 SHA-256 校验），与旧版配置文件互通

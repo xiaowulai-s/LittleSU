@@ -204,13 +204,26 @@ jobs:
           echo "DMG created successfully at ${DMG_PATH}"
           ls -lh "${DMG_PATH}"
 
+          # tauri build 产出的 .app.tar.gz 里是 ad-hoc 签名前的 bundle，
+          # 直接用它做更新会让 macOS 更新后拿到未签名的包，因此用签名后的 .app 重建归档并重新签名
+          TAR_GZ="src-tauri/target/release/bundle/macos/${APP_NAME_RAW}.app.tar.gz"
+          rm -f "$TAR_GZ" "$TAR_GZ.sig"
+          (
+            cd "src-tauri/target/release/bundle/macos"
+            # 归档结构与 tauri 生成的保持一致：<Name>.app/ 位于压缩包根目录
+            COPYFILE_DISABLE=1 tar -czf "${APP_NAME_RAW}.app.tar.gz" "${APP_NAME_RAW}.app"
+          )
+          npx tauri signer sign --app-version "${GITHUB_REF_NAME#v}" "$TAR_GZ"
+
           # Upload the .dmg artifact
           echo "Uploading ${DMG_NAME}..."
           gh release upload ${{ github.ref_name }} "${DMG_PATH}" --clobber
-          TAR_GZ="src-tauri/target/release/bundle/macos/${APP_NAME_RAW}.app.tar.gz"
-          if [ -f "$TAR_GZ" ]; then
+          if [ -f "$TAR_GZ" ] && [ -f "${TAR_GZ}.sig" ]; then
             gh release upload ${{ github.ref_name }} "${TAR_GZ}" "${TAR_GZ}.sig" --clobber
             echo "macOS updater artifact uploaded."
+          else
+            echo "::error::macOS updater artifact missing after re-signing"
+            exit 1
           fi
           echo "DMG uploaded."
         env:
@@ -1006,3 +1019,158 @@ jobs:
           asset_path: apps/app/${{ steps.sign_x86_64_apk.outputs.signed_apk_path }}
           asset_name: LittleSU-TV-${{ github.ref_name }}-android-x86_64.apk
           asset_content_type: application/vnd.android.package-archive
+
+  # 在桌面与安卓产物都上传后统一收尾：
+  # 1) tauri-action 只写 Windows/Linux 平台，macOS 手动构建的条目需要合并进 latest.json
+  # 2) web-standalone 只给自己那个 tar 出校验和，这里生成覆盖全部资产的 SHA256SUMS
+  # 3) 用 updater 公钥逐个平台做 minisign 校验，避免发出客户端装不上的更新
+  finalize_release:
+    name: Finalize Release (updater manifest + checksums)
+    needs: [create_release, build_tauri_desktop, build_tauri_android_release]
+    if: needs.create_release.result == 'success' && needs.build_tauri_desktop.result == 'success' && needs.build_tauri_android_release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install minisign
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+
+      - name: Wait for web standalone asset
+        run: |
+          set -euo pipefail
+          # web-standalone 与本工作流由同一个 tag 并行触发，等它的包就位再算校验和
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -q -- '-standalone.tar.gz$'; then
+              echo "standalone asset is present"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::standalone asset missing after 5 minutes, checksums will not cover it"
+
+      - name: Download release assets
+        run: |
+          set -euo pipefail
+          rm -rf release-assets
+          mkdir -p release-assets
+          gh release view "$TAG" --json assets --jq '.assets[].name' > /tmp/asset-names.txt
+          while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            if [ "$name" = "SHA256SUMS" ]; then
+              continue
+            fi
+            gh release download "$TAG" --pattern "$name" --dir release-assets --clobber
+          done < /tmp/asset-names.txt
+          ls -lh release-assets
+
+      - name: Merge macOS updater entry into latest.json
+        run: |
+          set -euo pipefail
+          APP_VERSION="${TAG#v}"
+          [ -f release-assets/latest.json ] || echo '{"platforms":{}}' > release-assets/latest.json
+          TARBALL="$(find release-assets -maxdepth 1 -name '*.app.tar.gz' -printf '%f\n' | head -n 1)"
+          if [ -z "$TARBALL" ]; then
+            echo "::error::macOS updater tarball not found in release assets"
+            exit 1
+          fi
+          if [ ! -f "release-assets/${TARBALL}.sig" ]; then
+            echo "::error::signature for ${TARBALL} not found"
+            exit 1
+          fi
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${TARBALL}"
+          NOTES="$(gh release view "$TAG" --json body --jq '.body // ""')"
+          jq --arg v "$APP_VERSION" \
+             --arg notes "$NOTES" \
+             --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+             --arg url "$URL" \
+             --arg sig "$(cat "release-assets/${TARBALL}.sig")" \
+             '.version = $v
+              | .notes = (if $notes == "" then (.notes // "") else $notes end)
+              | .pub_date = $date
+              | .platforms = ((.platforms // {}) + {"darwin-aarch64": {signature: $sig, url: $url}})' \
+             release-assets/latest.json > /tmp/latest.json
+          mv /tmp/latest.json release-assets/latest.json
+          jq -r '"manifest version=\(.version)", (.platforms | keys[])' release-assets/latest.json
+
+      - name: Verify updater signatures for every platform
+        run: |
+          set -euo pipefail
+          jq -r '.plugins.updater.pubkey' apps/app/src-tauri/tauri.conf.json | base64 -d > updater.pub
+          node <<'EOF'
+          const fs = require('fs');
+          const os = require('os');
+          const path = require('path');
+          const { spawnSync } = require('child_process');
+
+          const manifest = JSON.parse(fs.readFileSync('release-assets/latest.json', 'utf8'));
+          const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sig-'));
+          let failures = 0;
+          const platforms = Object.entries(manifest.platforms);
+          for (const [platform, info] of platforms) {
+            const name = decodeURIComponent(new URL(info.url).pathname.split('/').pop());
+            const file = path.join('release-assets', name);
+            if (!fs.existsSync(file)) {
+              console.log(`::error::${platform}: ${name} missing from release assets`);
+              failures += 1;
+              continue;
+            }
+            const sigPath = path.join(tmp, `${platform}.minisig`);
+            fs.writeFileSync(sigPath, Buffer.from(info.signature, 'base64'));
+            const result = spawnSync('minisign', ['-Vm', file, '-p', 'updater.pub', '-x', sigPath], { encoding: 'utf8' });
+            if (result.status !== 0) {
+              console.log(`::error::${platform}: signature verification failed for ${name}`);
+              console.log(result.stdout || '');
+              console.log(result.stderr || '');
+              failures += 1;
+              continue;
+            }
+            // 签名里的 trusted comment 记录了签名时的版本，客户端开启了 requireSignedVersion，
+            // 这里提前确认清单版本与签名版本一致，否则用户端会直接拒绝这次更新
+            const decoded = Buffer.from(info.signature, 'base64').toString('utf8');
+            const trusted = decoded.split('\n').find((line) => line.startsWith('trusted comment:')) || '';
+            const signedVersion = trusted.match(/\bversion:([^\s]+)/);
+            if (!signedVersion) {
+              console.log(`::warning::${platform}: signature carries no embedded version`);
+            } else if (signedVersion[1] !== manifest.version) {
+              console.log(`::error::${platform}: signature is for ${signedVersion[1]} but manifest announces ${manifest.version}`);
+              failures += 1;
+              continue;
+            }
+            console.log(`OK ${platform} <- ${name} (version ${manifest.version})`);
+          }
+          if (failures > 0) {
+            process.exit(1);
+          }
+          console.log(`verified ${platforms.length} platform entries`);
+          EOF
+
+      - name: Generate SHA256SUMS for all assets
+        run: |
+          set -euo pipefail
+          cd release-assets
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' \
+            | LC_ALL=C sort \
+            | while IFS= read -r f; do sha256sum -- "$f"; done > SHA256SUMS
+          echo "--- SHA256SUMS ---"
+          cat SHA256SUMS
+
+      - name: Upload updater manifest and checksums
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" release-assets/latest.json release-assets/SHA256SUMS --clobber
+          rm -rf verify-assets
+          mkdir verify-assets
+          gh release download "$TAG" --pattern 'latest.json' --dir verify-assets --clobber
+          gh release download "$TAG" --pattern 'SHA256SUMS' --dir verify-assets --clobber
+          jq -e '.version == (env.TAG | ltrimstr("v")) and (.platforms | has("darwin-aarch64"))' verify-assets/latest.json > /dev/null
+          echo "latest.json platforms: $(jq -r '.platforms | keys | join(", ")' verify-assets/latest.json)"
+          echo "SHA256SUMS entries: $(grep -cE '^[0-9a-f]{64}  ' verify-assets/SHA256SUMS)"
+          echo "release assets: $(gh release view "$TAG" --json assets --jq '.assets | length')"

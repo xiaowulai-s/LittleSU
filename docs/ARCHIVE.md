@@ -39,3 +39,4 @@
 7. v1.3.0 起客户端界面切换为 `apps/app/ui-next`（React + Vite + TypeScript，Lightframe 设计），旧静态界面 `apps/app/public` 保留用于回滚。
 8. v1.3.0 的 Android 构建失败（窗口命令未按平台区分），v1.3.1 修复并成为首个在 Android APK 中启用新前端的版本。
 9. v1.4.0 桌面端恢复应用内自动更新（updater/process 插件），播放器补齐音量/全屏/广告过滤/失败自动换源与源测活，并修复 Android WebView 宽度误判导致的桌面布局问题。
+10. v1.4.1 统一更新链路：macOS 更新包改为对 ad-hoc 签名后的 `.app` 重新打包并签名；发布收尾作业把 `darwin-aarch64` 合并进 `latest.json`，用 minisign 校验全部平台签名与内嵌版本，并生成覆盖全部资产的 `SHA256SUMS`；客户端开启 `requireSignedVersion`。
