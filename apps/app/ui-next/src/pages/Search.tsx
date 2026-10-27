@@ -5,6 +5,8 @@ import { hotSearches, titles as mockTitles } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
 import { useSearch } from '../lib/hooks';
+import type { SearchScope } from '../lib/hooks';
+import { SOURCES, customDefs, isSourceHealthy } from '../lib/sources';
 import { Button, Chip, EmptyState, Poster, SectionHeader } from '../ui';
 
 const typeFilters = ['全部', '电影', '剧集', '纪录片', '动画'] as const;
@@ -14,15 +16,22 @@ const sortFilters = ['推荐', '评分', '年份'] as const;
 export default function Search() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { toast, activeSources } = useApp();
+  const { toast, activeSources, health, customApis } = useApp();
   const urlQuery = params.get('q') ?? '';
   const [value, setValue] = useState(urlQuery);
   const [type, setType] = useState<(typeof typeFilters)[number]>('全部');
   const [quality, setQuality] = useState<(typeof qualityFilters)[number]>('全部');
   const [sort, setSort] = useState<(typeof sortFilters)[number]>('推荐');
   const [failedOpen, setFailedOpen] = useState(false);
-  const [scope, setScope] = useState<'recommended' | 'all' | 'ok'>('recommended');
-  const { loading, results, failures, real } = useSearch(urlQuery);
+  const [scope, setScope] = useState<SearchScope>('recommended');
+  const { loading, results, failures, real, total } = useSearch(urlQuery, scope);
+
+  const allSources = useMemo(() => [...SOURCES, ...customDefs(customApis)], [customApis]);
+  const okCount = useMemo(
+    () => allSources.filter((source) => isSourceHealthy(source, health)).length,
+    [allSources, health],
+  );
+  const scopeCount = scope === 'all' ? allSources.length : scope === 'ok' ? okCount : activeSources.length;
 
   useEffect(() => setValue(urlQuery), [urlQuery]);
 
@@ -47,7 +56,7 @@ export default function Search() {
     const query = value.trim();
     setParams(query ? { q: query } : {});
     if (query) {
-      toast(real ? `正在 ${activeSources.length} 个源中搜索「${query}」` : `正在示例数据中搜索「${query}」`, 'success');
+      toast(real ? `正在 ${scopeCount} 个源中搜索「${query}」` : `正在示例数据中搜索「${query}」`, 'success');
     }
   };
 
@@ -82,8 +91,8 @@ export default function Search() {
         <div className="filter-group">
           <span className="filter-label">来源</span>
           <Chip active={scope === 'recommended'} onClick={() => setScope('recommended')}>推荐源 {activeSources.length}</Chip>
-          <Chip active={scope === 'all'} onClick={() => setScope('all')}>全部 25</Chip>
-          <Chip active={scope === 'ok'} onClick={() => setScope('ok')}>可用 10</Chip>
+          <Chip active={scope === 'all'} onClick={() => setScope('all')}>全部 {allSources.length}</Chip>
+          <Chip active={scope === 'ok'} onClick={() => setScope('ok')}>可用 {okCount}</Chip>
         </div>
         <div className="filter-group">
           <span className="filter-label">类型</span>
@@ -137,7 +146,7 @@ export default function Search() {
             <h2>{urlQuery ? `「${urlQuery}」的搜索结果` : '为你推荐'}</h2>
             <p>
               {showSkeleton
-                ? `正在从 ${real ? activeSources.length : 0} 个源流式搜索…`
+                ? `正在从 ${total || scopeCount} 个源流式搜索…`
                 : `${filtered.length} 个结果 · ${real ? '已跨源去重' : '示例数据'}${loading ? ' · 仍在搜索…' : ''}`}
             </p>
           </div>
@@ -161,7 +170,7 @@ export default function Search() {
           <EmptyState
             icon="search"
             title="没有找到匹配内容"
-            description={real ? '试试更短的片名，或在设置中启用更多源。' : '试试更短的片名，或切换到全部 25 个源。'}
+            description={real ? '试试更短的片名，或在设置中启用更多源。' : `试试更短的片名，或切换到全部 ${allSources.length} 个源。`}
             action={<Button variant="primary" onClick={() => { setType('全部'); setQuality('全部'); setSort('推荐'); }}>清除筛选</Button>}
           />
         ) : null}

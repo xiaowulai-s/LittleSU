@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { CSSProperties } from 'react';
 import { channels, historyItems, titles as mockTitles } from '../data';
@@ -6,12 +7,38 @@ import { Icon } from '../icons';
 import { useApp } from '../store';
 import { favoriteToTitle, historyToTitle } from '../lib/adapters';
 import { useHomeFeed } from '../lib/hooks';
-import { Button, EmptyState, Rail, Rating } from '../ui';
+import { DOUBAN_TAGS, fetchDouban } from '../lib/douban';
+import type { DoubanItem, DoubanTag } from '../lib/douban';
+import { isTauri } from '../lib/env';
+import { Button, Chip, EmptyState, Rail, Rating } from '../ui';
 
 export default function Home() {
   const navigate = useNavigate();
   const { openTitle, favoriteKeys, toggleFavorite, toast, history, favorites, sourceState, customApis } = useApp();
   const feed = useHomeFeed();
+  const [doubanTag, setDoubanTag] = useState<DoubanTag>('hot-movie');
+  const [doubanItems, setDoubanItems] = useState<DoubanItem[]>([]);
+  const [doubanLoading, setDoubanLoading] = useState(false);
+  const doubanAvailable = isTauri();
+
+  useEffect(() => {
+    if (!doubanAvailable) return;
+    let cancelled = false;
+    setDoubanLoading(true);
+    fetchDouban(doubanTag)
+      .then((items) => {
+        if (!cancelled) setDoubanItems(items);
+      })
+      .catch(() => {
+        if (!cancelled) setDoubanItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDoubanLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doubanTag, doubanAvailable]);
 
   const items: Title[] = feed.items.length ? feed.items : mockTitles;
   const hero: Title = items.find((item) => item.badge) ?? items[0];
@@ -129,6 +156,54 @@ export default function Home() {
       )}
       {series.length > 0 && <Rail title="热门剧集" subtitle="本周讨论度最高" items={series} actionLabel="查看更多" onAction={() => navigate('/search?q=剧集')} />}
       {topRated.length > 0 && <Rail title="高分精选" subtitle="按评分排序" items={topRated} actionLabel="完整榜单" onAction={() => navigate('/search?q=Top250')} />}
+
+      {doubanAvailable && (doubanLoading || doubanItems.length > 0) && (
+        <section className="rail-section douban-section">
+          <div className="section-header">
+            <div>
+              <h2>豆瓣推荐</h2>
+              <p>榜单来自豆瓣，点击片名到已启用源中搜索</p>
+            </div>
+          </div>
+          <div className="douban-tags">
+            {DOUBAN_TAGS.map((tag) => (
+              <Chip key={tag.key} active={doubanTag === tag.key} onClick={() => setDoubanTag(tag.key)}>
+                {tag.label}
+              </Chip>
+            ))}
+          </div>
+          {doubanLoading && !doubanItems.length ? (
+            <div className="feed-loading"><Icon name="refresh" size={15} /> 正在加载豆瓣榜单…</div>
+          ) : (
+            <div className="douban-grid">
+              {doubanItems.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className="douban-card"
+                  onClick={() => navigate(`/search?q=${encodeURIComponent(item.title)}`)}
+                >
+                  <span className="douban-cover">
+                    <span className="douban-cover-mark">{item.title.slice(0, 1)}</span>
+                    {item.cover ? (
+                      <img
+                        src={item.cover}
+                        alt=""
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        onError={(event) => { event.currentTarget.style.display = 'none'; }}
+                      />
+                    ) : null}
+                    {item.rate ? <span className="douban-rate">{item.rate}</span> : null}
+                  </span>
+                  <strong>{item.title}</strong>
+                  <small>{item.isTv ? '剧集' : '电影'} · 豆瓣 {item.rate || '暂无评分'}</small>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
       {favoriteTitles.length > 0 && (
         <Rail title="我的收藏" subtitle="你标记过的内容" items={favoriteTitles} actionLabel="管理收藏" onAction={() => navigate('/favorites')} />
       )}

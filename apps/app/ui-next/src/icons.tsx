@@ -35,7 +35,8 @@ export type IconName =
   | 'list'
   | 'wifi'
   | 'sparkles'
-  | 'pin';
+  | 'pin'
+  | 'edit';
 
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h5v-6h4v6h5V9.5" /></>,
@@ -73,6 +74,7 @@ const paths: Record<IconName, ReactNode> = {
   wifi: <><path d="M5 12.5a10 10 0 0 1 14 0" /><path d="M8 15.5a6 6 0 0 1 8 0" /><path d="M11 18.5a2 2 0 0 1 2 0" /></>,
   sparkles: <><path d="m12 3 1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z" /><path d="m19 14 .8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z" /><path d="m5 15 .6 1.4L7 17l-1.4.6L5 19l-.6-1.4L3 17l1.4-.6z" /></>,
   pin: <><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z" /><circle cx="12" cy="10" r="2.5" /></>,
+  edit: <><path d="M4 20h4l10-10-4-4L4 16v4z" /><path d="m13.5 6.5 4 4" /></>,
 };
 
 const filled: IconName[] = ['play', 'star', 'heart'];

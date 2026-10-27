@@ -9,6 +9,7 @@ import {
   defaultSelectedKeys,
   loadCustomApis,
   loadSelectedKeys,
+  saveCustomApis,
   saveSelectedKeys,
 } from './lib/sources';
 import type { CustomApi, SourceDef } from './lib/sources';
@@ -61,6 +62,7 @@ interface AppState {
   setAllSources: (enabled: boolean) => void;
   setRecommendedSources: () => void;
   customApis: CustomApi[];
+  setCustomApis: (apis: CustomApi[]) => void;
   activeSources: SourceDef[];
   settings: PlaybackSettings;
   updateSettings: (patch: Partial<PlaybackSettings>) => void;
@@ -118,7 +120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<FavoriteRecord[]>(() => loadFavorites());
   const [history, setHistory] = useState<HistoryRecord[]>(() => loadHistory());
   const [sourceState, setSourceState] = useState<Record<string, boolean>>(initialSourceState);
-  const [customApis] = useState<CustomApi[]>(() => loadCustomApis());
+  const [customApis, setCustomApisState] = useState<CustomApi[]>(() => loadCustomApis());
   const [settings, setSettings] = useState<PlaybackSettings>(() => loadSettings());
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -211,6 +213,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSourceState(Object.fromEntries(SOURCES.map((source) => [source.key, recommended.has(source.key)])));
   }, []);
 
+  const setCustomApis = useCallback((next: CustomApi[]) => {
+    setCustomApisState(next);
+    saveCustomApis(next);
+  }, []);
+
   const updateSettings = useCallback((patch: Partial<PlaybackSettings>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -280,7 +287,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (checkingSources) return;
-    const targets = SOURCES.filter((source) => sourceState[source.key] || source.status === 'ok');
+    const targets = [
+      ...SOURCES.filter((source) => sourceState[source.key] || source.status === 'ok'),
+      ...customDefs(customApis),
+    ];
     if (!targets.length) {
       toast('没有可测活的源', 'warning');
       return;
@@ -299,9 +309,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     await Promise.all(Array.from({ length: 4 }, worker));
     setCheckingSources(false);
+    const failedEnabled = targets.filter((source) => next[source.key]?.status === 'fail' && sourceState[source.key]);
+    if (failedEnabled.length) {
+      setSourceState((prev) => {
+        const updated = { ...prev };
+        failedEnabled.forEach((source) => {
+          updated[source.key] = false;
+        });
+        return updated;
+      });
+    }
     const okCount = targets.filter((source) => next[source.key]?.status === 'ok').length;
-    toast(`测活完成：${okCount}/${targets.length} 个源可用`, 'success');
-  }, [checkingSources, health, sourceState, toast]);
+    toast(
+      failedEnabled.length
+        ? `测活完成：${okCount}/${targets.length} 个源可用，已自动停用 ${failedEnabled.length} 个失败源`
+        : `测活完成：${okCount}/${targets.length} 个源可用`,
+      'success',
+    );
+  }, [checkingSources, health, sourceState, customApis, toast]);
 
   const openTitle = useCallback(
     (key: string) => {
@@ -333,6 +358,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllSources,
       setRecommendedSources,
       customApis,
+      setCustomApis,
       activeSources,
       settings,
       updateSettings,
@@ -367,6 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllSources,
       setRecommendedSources,
       customApis,
+      setCustomApis,
       activeSources,
       settings,
       updateSettings,

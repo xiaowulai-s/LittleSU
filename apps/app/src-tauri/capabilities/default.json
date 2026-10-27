@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
+    "core:app:allow-exit",
     "updater:default",
     "process:allow-restart",
     "opener:default"

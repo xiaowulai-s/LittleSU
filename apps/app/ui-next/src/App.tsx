@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { AndroidShell, PreviewDock, WindowsShell } from './layout';
 import { AppProvider, useApp } from './store';
 import { isTauri } from './lib/env';
@@ -69,6 +69,52 @@ function UpdatePrompt() {
   );
 }
 
+function AndroidBackHandler() {
+  const { device, drawerId, closeDrawer } = useApp();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const depth = useRef(0);
+
+  useEffect(() => {
+    if (navigationType === 'PUSH') depth.current += 1;
+    else if (navigationType === 'POP') depth.current = Math.max(0, depth.current - 1);
+  }, [location.key, navigationType]);
+
+  useEffect(() => {
+    if (device !== 'android' || !isTauri()) return;
+    let disposed = false;
+    let listener: { unregister: () => void } | undefined;
+    import('@tauri-apps/api/app')
+      .then(({ onBackButtonPress, exit }) => onBackButtonPress(({ canGoBack }) => {
+        if (drawerId) {
+          closeDrawer();
+          return;
+        }
+        if (depth.current > 0) {
+          navigate(-1);
+          return;
+        }
+        if (canGoBack) {
+          window.history.back();
+          return;
+        }
+        void exit(0);
+      }))
+      .then((fn) => {
+        if (disposed) fn.unregister();
+        else listener = fn;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      listener?.unregister();
+    };
+  }, [device, drawerId, closeDrawer, navigate]);
+
+  return null;
+}
+
 function Prototype() {
   const { device, effectiveTheme, checkUpdate, toast } = useApp();
   const location = useLocation();
@@ -96,6 +142,7 @@ function Prototype() {
   if (!preview) {
     return (
       <div className={`prototype-root app-standalone device-${device}`} data-theme={effectiveTheme} data-device={device}>
+        <AndroidBackHandler />
         {device === 'windows' ? (
           isPlayer ? <AppRoutes /> : (
             <WindowsShell overlay={<DetailDrawer />}>
@@ -114,6 +161,7 @@ function Prototype() {
 
   return (
     <div className="prototype-root" data-theme={effectiveTheme} data-device={device}>
+      <AndroidBackHandler />
       <div className="prototype-stage">
         <div className="stage-meta">
           <span className="stage-brand">Lightframe</span>

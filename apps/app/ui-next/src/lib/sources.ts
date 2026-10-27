@@ -108,6 +108,24 @@ export function saveSelectedKeys(keys: string[]): void {
   }
 }
 
+export function saveCustomApis(apis: CustomApi[]): void {
+  try {
+    localStorage.setItem('customAPIs', JSON.stringify(apis));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 源当前是否可用：有测活结果时以测活为准，否则回落内置状态（自定义源默认可用）。 */
+export function isSourceHealthy(
+  source: SourceDef,
+  health: Record<string, { status: 'ok' | 'fail' } | undefined>,
+): boolean {
+  const probe = health[source.key];
+  if (probe) return probe.status === 'ok';
+  return source.custom === true || source.status === 'ok';
+}
+
 export function findSource(key: string, customs: CustomApi[] = []): SourceDef | undefined {
   const builtIn = SOURCES.find((s) => s.key === key);
   if (builtIn) return builtIn;

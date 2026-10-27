@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { SOURCES, customDefs } from '../lib/sources';
 import type { SourceDef } from '../lib/sources';
 import { KEYS } from '../lib/storage';
@@ -106,6 +106,7 @@ export default function Settings() {
     settings,
     updateSettings,
     customApis,
+    setCustomApis,
     clearHistory,
     history,
     updateInfo,
@@ -123,6 +124,9 @@ export default function Settings() {
     requested && ['appearance', 'playback', 'sources', 'data', 'about'].includes(requested) ? requested : 'appearance',
   );
   const [showAll, setShowAll] = useState(false);
+  const [editingCustom, setEditingCustom] = useState<number | 'new' | null>(null);
+  const [customName, setCustomName] = useState('');
+  const [customUrl, setCustomUrl] = useState('');
 
   useEffect(() => {
     if (requested && ['appearance', 'playback', 'sources', 'data', 'about'].includes(requested)) {
@@ -179,6 +183,60 @@ export default function Settings() {
     } catch (error) {
       toast(`导入失败：${error instanceof Error ? error.message : '未知错误'}`, 'warning');
     }
+  };
+
+  const startAddCustom = () => {
+    setEditingCustom('new');
+    setCustomName('');
+    setCustomUrl('');
+  };
+
+  const startEditCustom = (index: number) => {
+    setEditingCustom(index);
+    setCustomName(customApis[index]?.name ?? '');
+    setCustomUrl(customApis[index]?.url ?? '');
+  };
+
+  const cancelCustom = () => {
+    setEditingCustom(null);
+    setCustomName('');
+    setCustomUrl('');
+  };
+
+  const submitCustom = (event: FormEvent) => {
+    event.preventDefault();
+    const url = customUrl.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(url)) {
+      toast('接口地址需以 http:// 或 https:// 开头', 'warning');
+      return;
+    }
+    let name = customName.trim();
+    if (!name) {
+      try {
+        name = new URL(url).hostname;
+      } catch {
+        name = url;
+      }
+    }
+    const duplicated = customApis.some((api, index) => api.url.replace(/\/+$/, '') === url && index !== editingCustom);
+    if (duplicated) {
+      toast('该接口已存在', 'warning');
+      return;
+    }
+    const next = [...customApis];
+    if (editingCustom === 'new') next.push({ name, url });
+    else if (typeof editingCustom === 'number') next[editingCustom] = { ...next[editingCustom], name, url };
+    setCustomApis(next);
+    toast(editingCustom === 'new' ? `已添加 ${name}` : `已更新 ${name}`, 'success');
+    cancelCustom();
+  };
+
+  const removeCustom = (index: number) => {
+    const api = customApis[index];
+    if (!api) return;
+    setCustomApis(customApis.filter((_, itemIndex) => itemIndex !== index));
+    if (editingCustom === index) cancelCustom();
+    toast(`已删除 ${api.name}`, 'success');
   };
 
   return (
@@ -293,7 +351,7 @@ export default function Settings() {
                 <div>
                   <span className="source-summary-kicker">数据源</span>
                   <h3>{enabledCount} / {total} 已启用</h3>
-                  <p>推荐源默认开启，其余按需展开；选择会保存在本机。</p>
+                  <p>推荐源默认开启，其余按需展开；测活失败的已启用源会自动停用，选择保存在本机。</p>
                 </div>
                 <div className="source-summary-actions">
                   <Button size="sm" variant="ghost" icon="sparkles" onClick={setRecommendedSources}>仅推荐</Button>
@@ -310,13 +368,57 @@ export default function Settings() {
                 </div>
               </SettingCard>
 
-              {customs.length > 0 && (
-                <SettingCard title="自定义源" description="来自 customAPIs 配置的自定义接口。">
-                  <div className="source-list">
-                    {customs.map((source) => <SourceRow key={source.key} source={source} />)}
-                  </div>
-                </SettingCard>
-              )}
+              <SettingCard title="自定义源" description="苹果 CMS 兼容接口，保存后立即参与搜索与详情。">
+                <div className="source-list">
+                  {customApis.map((api, index) => (
+                    <div className="source-row is-enabled" key={`${api.url}-${index}`}>
+                      <StatusDot status="ok" />
+                      <div className="source-row-main">
+                        <div className="source-row-title">
+                          <strong>{api.name}</strong>
+                          <span className="source-status source-status-ok">自定义</span>
+                        </div>
+                        <div className="source-row-meta"><span>{api.url}</span></div>
+                      </div>
+                      <div className="custom-source-actions">
+                        <button type="button" className="icon-btn" onClick={() => startEditCustom(index)} aria-label={`编辑 ${api.name}`}>
+                          <Icon name="edit" size={16} />
+                        </button>
+                        <button type="button" className="icon-btn" onClick={() => removeCustom(index)} aria-label={`删除 ${api.name}`}>
+                          <Icon name="trash" size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {!customApis.length && editingCustom === null && (
+                    <p className="setting-hint">还没有自定义源，添加一个苹果 CMS 接口即可参与搜索。</p>
+                  )}
+                </div>
+                {editingCustom !== null ? (
+                  <form className="custom-source-form" onSubmit={submitCustom}>
+                    <input
+                      value={customName}
+                      onChange={(event) => setCustomName(event.target.value)}
+                      placeholder="名称（留空自动取域名）"
+                      aria-label="自定义源名称"
+                    />
+                    <input
+                      value={customUrl}
+                      onChange={(event) => setCustomUrl(event.target.value)}
+                      placeholder="https://example.com/api.php/provide/vod/"
+                      aria-label="自定义源接口地址"
+                    />
+                    <div className="custom-source-form-actions">
+                      <Button size="sm" variant="ghost" onClick={cancelCustom}>取消</Button>
+                      <Button size="sm" variant="primary" type="submit" icon="check">
+                        {editingCustom === 'new' ? '添加' : '保存'}
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <Button size="sm" variant="secondary" icon="plus" onClick={startAddCustom}>新增自定义源</Button>
+                )}
+              </SettingCard>
 
               {!showAll ? (
                 <button type="button" className="show-all-sources" onClick={() => setShowAll(true)}>

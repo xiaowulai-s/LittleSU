@@ -2614,3 +2614,98 @@ h1, h2, h3, p { margin: 0; }
 .device-android .video-volume { width: 44px; }
 .video-controls .video-volume { flex: 0 0 auto; }
 .device-android .setting-volume { width: 110px; }
+
+/* ---------- 豆瓣推荐 ---------- */
+
+.douban-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.douban-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 14px; }
+.douban-card {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+.douban-cover {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+.douban-cover-mark {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--muted);
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+}
+.douban-cover img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.douban-rate {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .66);
+  color: #ffb547;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.douban-card strong { font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.douban-card small { color: var(--muted); font-size: 10px; }
+.douban-card:hover .douban-cover { outline: 1px solid var(--accent); }
+
+/* ---------- 自定义源 ---------- */
+
+.custom-source-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.custom-source-form { display: grid; gap: 8px; margin-top: 12px; }
+.custom-source-form input {
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 12px;
+}
+.custom-source-form input:focus { outline: 1px solid var(--accent); }
+.custom-source-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------- 直播节目单 ---------- */
+
+.live-epg { display: flex; flex-direction: column; gap: 4px; min-width: 240px; max-width: 320px; }
+.live-epg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.live-epg-days { display: flex; gap: 4px; }
+.live-epg-days .chip, .live-epg-days button { height: 22px; padding: 0 8px; font-size: 10px; }
+.live-epg-list { margin-top: 6px; max-height: 148px; overflow-y: auto; display: grid; gap: 2px; }
+.live-epg-item {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-align: left;
+}
+.live-epg-item span { text-transform: none; letter-spacing: 0; font-size: 10.5px; }
+.live-epg-item span:first-child { font-variant-numeric: tabular-nums; }
+.live-epg-item.is-current { background: var(--accent-soft); color: var(--text); }
+.device-android .live-epg { min-width: 0; max-width: none; }
+.device-android .douban-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }

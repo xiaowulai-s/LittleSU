@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { titles as mockTitles } from './data';
@@ -7,6 +7,7 @@ import { Icon } from './icons';
 import { useApp } from './store';
 import { historyToTitle } from './lib/adapters';
 import { useDetail } from './lib/hooks';
+import { cacheTitle } from './lib/titleCache';
 import { Button, Poster, Rating, SectionHeader } from './ui';
 
 function episodesOf(count: number, type: string) {
@@ -16,11 +17,35 @@ function episodesOf(count: number, type: string) {
 
 export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; inDrawer?: boolean }) {
   const navigate = useNavigate();
-  const { favoriteKeys, toggleFavorite, toast, closeDrawer, getTitle, history, activeSources } = useApp();
-  const cached: Title | undefined = getTitle(titleKey)
-    ?? (history.find((item) => item.key === titleKey) ? historyToTitle(history.find((item) => item.key === titleKey)!) : undefined);
-  const { title: fetched, loading, error } = useDetail(cached);
-  const title = fetched ?? cached;
+  const { favoriteKeys, toggleFavorite, toast, closeDrawer, getTitle, history, health } = useApp();
+  const [variantKey, setVariantKey] = useState<string | null>(null);
+
+  const cached: Title | undefined = useMemo(() => {
+    const found = getTitle(titleKey);
+    if (found) return found;
+    const record = history.find((item) => item.key === titleKey);
+    return record ? historyToTitle(record) : undefined;
+  }, [titleKey, getTitle, history]);
+
+  /** 选中其他源时以变体信息重建基础 Title，再交给 useDetail 拉取该源详情 */
+  const base = useMemo<Title | undefined>(() => {
+    if (!cached || !variantKey) return cached;
+    const variant = cached.variants?.find((item) => `${item.sourceKey}:${item.vodId}` === variantKey);
+    if (!variant) return cached;
+    return {
+      ...cached,
+      key: variantKey,
+      id: variantKey,
+      source: variant.sourceName,
+      sourceKey: variant.sourceKey,
+      vodId: variant.vodId,
+      episodesList: undefined,
+      playUrl: undefined,
+    };
+  }, [cached, variantKey]);
+
+  const { title: fetched, loading, error } = useDetail(base);
+  const title = fetched ?? base;
 
   if (!title) {
     return <div className="detail-empty">没有找到这个条目</div>;
@@ -34,14 +59,32 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
   const related = mockTitles
     .filter((item) => item.id !== title.id && (item.type === title.type || item.genres[0] === title.genres[0]))
     .slice(0, 6);
-  const sourceOptions = activeSources.slice(0, 3).map((source, index) => ({
-    name: source.name,
-    quality: index === 0 ? title.quality : '1080P',
-    latency: source.latency,
-    active: index === 0,
-  }));
+  const currentSourceKey = title.sourceKey && title.vodId ? `${title.sourceKey}:${title.vodId}` : key;
+  const sourceOptions = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; sourceKey: string }>();
+    (title.variants ?? []).forEach((variant) => {
+      const variantId = `${variant.sourceKey}:${variant.vodId}`;
+      if (!map.has(variantId)) {
+        map.set(variantId, { key: variantId, name: variant.sourceName, sourceKey: variant.sourceKey });
+      }
+    });
+    if (!map.size) map.set(currentSourceKey, { key: currentSourceKey, name: title.source, sourceKey: title.sourceKey ?? '' });
+    return Array.from(map.values());
+  }, [title, currentSourceKey]);
 
-  const play = () => navigate(`/player/${encodeURIComponent(key)}`);
+  const play = () => {
+    cacheTitle(title);
+    navigate(`/player/${encodeURIComponent(key)}`);
+  };
+
+  const switchSource = (option: { key: string; name: string; sourceKey: string }) => {
+    if (option.key === currentSourceKey) {
+      toast(`正在使用 ${option.name}`);
+      return;
+    }
+    setVariantKey(option.key);
+    toast(`正在切换到 ${option.name}`, 'success');
+  };
 
   return (
     <div className={`detail ${inDrawer ? 'detail-in-drawer' : 'detail-page'}`}>
@@ -105,20 +148,33 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
         </div>
 
         <section className="detail-section">
-          <SectionHeader title="播放源" subtitle={title.sources?.length ? `已聚合 ${title.sources.join(' / ')}` : '可用源默认优先，失败可手动切换'} />
+          <SectionHeader
+            title="播放源"
+            subtitle={sourceOptions.length > 1 ? `共 ${sourceOptions.length} 个源，点击切换` : '可用源默认优先，失败可手动切换'}
+          />
           <div className="source-options">
-            {sourceOptions.map((source) => (
-              <button
-                type="button"
-                key={source.name}
-                className={`source-option ${source.active ? 'is-active' : ''}`}
-                onClick={() => toast(source.active ? `正在使用 ${source.name}` : `切换到 ${source.name}（原型）`, 'success')}
-              >
-                <span className="source-option-name">{source.name}</span>
-                <span className="source-option-meta">{source.quality} · {source.latency > 0 ? `${source.latency}ms` : '未测活'}</span>
-                <i className="status-dot status-ok" />
-              </button>
-            ))}
+            {sourceOptions.map((option) => {
+              const probe = health[option.sourceKey];
+              const active = option.key === currentSourceKey;
+              return (
+                <button
+                  type="button"
+                  key={option.key}
+                  className={`source-option ${active ? 'is-active' : ''}`}
+                  onClick={() => switchSource(option)}
+                >
+                  <span className="source-option-name">{option.name}</span>
+                  <span className="source-option-meta">
+                    {active && loading
+                      ? '获取详情中…'
+                      : probe
+                        ? probe.status === 'ok' ? `${probe.latency}ms` : '测活失败'
+                        : active ? title.quality : '未测活'}
+                  </span>
+                  <i className={`status-dot ${probe?.status === 'fail' ? 'status-experimental' : 'status-ok'}`} />
+                </button>
+              );
+            })}
           </div>
         </section>
 

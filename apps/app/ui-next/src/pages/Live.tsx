@@ -7,7 +7,8 @@ import { hashHue } from '../lib/adapters';
 import { groupChannels } from '../lib/liveParser';
 import type { LiveChannel } from '../lib/liveParser';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
-import { useLivePlaylist } from '../lib/hooks';
+import { useLivePlaylist, useEpg } from '../lib/hooks';
+import { currentProgram, epgDate, nextProgram } from '../lib/epg';
 import { Button, Chip } from '../ui';
 
 const fallbackChannels: LiveChannel[] = mockChannelData.map((channel) => ({
@@ -29,12 +30,17 @@ export default function Live() {
   const { loading, channels: loaded, error } = useLivePlaylist(source.url, reloadKey);
   const list = loaded.length ? loaded : fallbackChannels;
   const [selectedId, setSelectedId] = useState<string>('');
+  const [epgDay, setEpgDay] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
 
   const selected = list.find((channel) => channel.id === selectedId) ?? list[0];
+  const epgDateStr = useMemo(() => epgDate(epgDay), [epgDay]);
+  const epg = useEpg(selected, epgDateStr);
+  const programNow = epgDay === 0 && epg.data ? currentProgram(epg.data.programs) : undefined;
+  const programNext = epg.data ? nextProgram(epg.data.programs) : undefined;
 
   useEffect(() => {
     if (!list.length) return;
@@ -194,9 +200,39 @@ export default function Live() {
               <p>频道分组：{selected?.group || '-'} · 来源：{source.name}</p>
             </div>
             <div className="live-epg">
-              <span>节目单</span>
-              <strong>{source.epg ? 'EPG 已配置' : '未配置'}</strong>
-              <small>{source.epg || '可后续接入 XMLTV'}</small>
+              <div className="live-epg-head">
+                <span>节目单</span>
+                <div className="live-epg-days">
+                  <Chip active={epgDay === 0} onClick={() => setEpgDay(0)}>今天</Chip>
+                  <Chip active={epgDay === 1} onClick={() => setEpgDay(1)}>明天</Chip>
+                </div>
+              </div>
+              {epg.loading ? (
+                <small>正在加载节目单…</small>
+              ) : epg.data ? (
+                <>
+                  <strong>
+                    {programNow
+                      ? `正在播：${programNow.title}（${programNow.start}–${programNow.end}）`
+                      : programNext
+                        ? `下一档：${programNext.title}（${programNext.start}）`
+                        : `${epg.data.channelName} · ${epg.data.programs.length} 个节目`}
+                  </strong>
+                  <div className="live-epg-list">
+                    {epg.data.programs.slice(0, 48).map((program, index) => (
+                      <div
+                        key={`${program.start}-${index}`}
+                        className={`live-epg-item ${program === programNow ? 'is-current' : ''}`}
+                      >
+                        <span>{program.start}</span>
+                        <span>{program.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <small>{epg.error || '该频道暂无节目单'}</small>
+              )}
             </div>
           </div>
         </section>
