@@ -8,7 +8,7 @@ export interface UpdateInfo {
   url: string;
 }
 
-function compareVersion(a: string, b: string): number {
+export function compareVersion(a: string, b: string): number {
   const pa = a.split('.').map((part) => Number(part) || 0);
   const pb = b.split('.').map((part) => Number(part) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {

@@ -593,6 +593,19 @@ async fn window_close(window: tauri::WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn window_set_fullscreen(window: tauri::WebviewWindow, fullscreen: bool) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        window.set_fullscreen(fullscreen).map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (window, fullscreen);
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   // let mut log_builder = Builder::default(); // Temporarily commented out
@@ -603,8 +616,13 @@ pub fn run() {
     // log_builder = log_builder.target(Target::Os); // Temporarily commented out
   // }
   
-  tauri::Builder::default()
-    .plugin(tauri_plugin_opener::init())
+  let builder = tauri::Builder::default()
+    .plugin(tauri_plugin_opener::init());
+  #[cfg(desktop)]
+  let builder = builder
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_process::init());
+  builder
     // .plugin( // Temporarily commented out
         // log_builder
             // .level(log::LevelFilter::Debug) 
@@ -617,7 +635,8 @@ pub fn run() {
         fetch_bytes_native,
         window_minimize,
         window_toggle_maximize,
-        window_close
+        window_close,
+        window_set_fullscreen
         // 如果您有其他 command，请在此处添加，用逗号分隔
         // e.g., another_command, yet_another_command
     ])

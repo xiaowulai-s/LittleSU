@@ -1,3 +1,4 @@
+import { filterAdsFromM3U8 } from './adFilter';
 import { httpBytes, httpText, isTauri } from './env';
 
 type LoaderCtor = new (config: unknown) => {
@@ -29,8 +30,14 @@ export interface LoaderCallbacks {
   onError: (data: { code: number; text: string }, context: LoaderContext, networkDetails: unknown, stats: LoaderStats) => void;
 }
 
+function isPlaylistContext(context: LoaderContext): boolean {
+  return !context.frag && !context.keyInfo
+    && (context.type === 'manifest' || context.type === 'level'
+      || context.type === 'audioTrack' || context.type === 'subtitleTrack');
+}
+
 /** 用 Tauri 原生取流替换 hls.js 默认 XHR loader，绕过 WebView CORS。 */
-export function createNativeHlsLoader(): LoaderCtor | null {
+export function createNativeHlsLoader(filterAds = false): LoaderCtor | null {
   if (!isTauri()) return null;
   const globalHls = (window as unknown as { Hls?: { DefaultConfig?: { loader?: LoaderCtor } } }).Hls;
   const Base = globalHls?.DefaultConfig?.loader;
@@ -60,17 +67,18 @@ export function createNativeHlsLoader(): LoaderCtor | null {
         retryDelay: 0,
       };
       this.nativeStats = stats;
-      const isPlaylist = !context.frag && !context.keyInfo
-        && (context.type === 'manifest' || context.type === 'level'
-          || context.type === 'audioTrack' || context.type === 'subtitleTrack');
+      const playlist = isPlaylistContext(context);
 
       const done = (data: string | ArrayBuffer) => {
         if (stats.aborted) return;
+        const payload = filterAds && playlist && typeof data === 'string'
+          ? filterAdsFromM3U8(data)
+          : data;
         stats.tfirst = performance.now();
         stats.tload = performance.now();
-        stats.loaded = typeof data === 'string' ? data.length : data.byteLength;
+        stats.loaded = typeof payload === 'string' ? payload.length : payload.byteLength;
         stats.total = stats.loaded;
-        callbacks.onSuccess({ url: context.url, data }, stats, context, null);
+        callbacks.onSuccess({ url: context.url, data: payload }, stats, context, null);
       };
       const fail = (error: unknown) => {
         if (stats.aborted) return;
@@ -78,7 +86,7 @@ export function createNativeHlsLoader(): LoaderCtor | null {
         callbacks.onError({ code: 0, text }, context, null, stats);
       };
 
-      if (isPlaylist) {
+      if (playlist) {
         httpText(context.url, { timeoutSecs: 25 }).then(done).catch(fail);
       } else {
         httpBytes(context.url, { timeoutSecs: 25 }).then(done).catch(fail);
@@ -95,8 +103,33 @@ export function createNativeHlsLoader(): LoaderCtor | null {
   };
 }
 
-export function hlsConfigWithNativeLoader(): Record<string, unknown> {
-  const loader = createNativeHlsLoader();
+/** 浏览器调试时对默认 loader 的播放列表做同样的广告过滤。 */
+function createBrowserFilteringLoader(filterAds: boolean): LoaderCtor | null {
+  if (!filterAds) return null;
+  const globalHls = (window as unknown as { Hls?: { DefaultConfig?: { loader?: LoaderCtor } } }).Hls;
+  const Base = globalHls?.DefaultConfig?.loader;
+  if (!Base) return null;
+
+  return class BrowserFilteringLoader extends Base {
+    load(context: LoaderContext, config: unknown, callbacks: LoaderCallbacks) {
+      if (!isPlaylistContext(context)) {
+        super.load(context, config, callbacks);
+        return;
+      }
+      const onSuccess = callbacks.onSuccess;
+      callbacks.onSuccess = (response, stats, ctx, networkDetails) => {
+        if (typeof response.data === 'string') {
+          response.data = filterAdsFromM3U8(response.data);
+        }
+        onSuccess(response, stats, ctx, networkDetails);
+      };
+      super.load(context, config, callbacks);
+    }
+  };
+}
+
+export function hlsConfigWithNativeLoader(filterAds = false): Record<string, unknown> {
+  const loader = createNativeHlsLoader(filterAds) ?? createBrowserFilteringLoader(filterAds);
   return {
     enableWorker: true,
     lowLatencyMode: false,

@@ -1,8 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { AndroidShell, PreviewDock, WindowsShell } from './layout';
 import { AppProvider, useApp } from './store';
 import { isTauri } from './lib/env';
+import { openExternal } from './lib/window';
+import { Icon } from './icons';
 import { DetailDrawer, DetailPage } from './detail';
 import Home from './pages/Home';
 import Search from './pages/Search';
@@ -25,6 +27,45 @@ function AppRoutes() {
       <Route path="/player/:id" element={<Player />} />
       <Route path="*" element={<Home />} />
     </Routes>
+  );
+}
+
+function UpdatePrompt() {
+  const { updateInfo, updateInstalling, updateProgress, installUpdate } = useApp();
+  const [dismissed, setDismissed] = useState(false);
+  if (!updateInfo?.hasUpdate || dismissed) return null;
+  const android = /android/i.test(navigator.userAgent);
+  return (
+    <div className="update-prompt" role="status">
+      <Icon name="sparkles" size={18} />
+      <div className="update-prompt-body">
+        <strong>发现新版本 v{updateInfo.latest}</strong>
+        <p>
+          {android
+            ? '前往 Releases 下载新 APK'
+            : updateInstalling
+              ? `正在下载并安装 ${updateProgress ?? 0}%`
+              : '可立即下载并安装，完成后自动重启'}
+        </p>
+        {updateInstalling && (
+          <div className="progress update-progress"><span style={{ width: `${updateProgress ?? 0}%` }} /></div>
+        )}
+      </div>
+      <div className="update-prompt-actions">
+        <button
+          type="button"
+          className="primary"
+          disabled={updateInstalling}
+          onClick={() => {
+            if (android) void openExternal(updateInfo.url);
+            else void installUpdate();
+          }}
+        >
+          {android ? '前往下载' : updateInstalling ? '更新中…' : '立即更新'}
+        </button>
+        <button type="button" onClick={() => setDismissed(true)} aria-label="稍后提醒">×</button>
+      </div>
+    </div>
   );
 }
 
@@ -54,7 +95,7 @@ function Prototype() {
 
   if (!preview) {
     return (
-      <div className="prototype-root app-standalone" data-theme={effectiveTheme} data-device={device}>
+      <div className={`prototype-root app-standalone device-${device}`} data-theme={effectiveTheme} data-device={device}>
         {device === 'windows' ? (
           isPlayer ? <AppRoutes /> : (
             <WindowsShell overlay={<DetailDrawer />}>
@@ -66,6 +107,7 @@ function Prototype() {
             <AppRoutes />
           </AndroidShell>
         )}
+        <UpdatePrompt />
       </div>
     );
   }
@@ -93,6 +135,7 @@ function Prototype() {
           )}
         </div>
         <PreviewDock />
+        <UpdatePrompt />
       </div>
     </div>
   );

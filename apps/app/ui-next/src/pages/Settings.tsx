@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { SOURCES, customDefs } from '../lib/sources';
@@ -24,6 +24,7 @@ const sections: { key: Section; label: string; icon: IconName }[] = [
 const recommended = SOURCES.filter((source) => source.status === 'ok');
 const backup = SOURCES.filter((source) => source.status === 'backup');
 const experimental = SOURCES.filter((source) => source.status === 'experimental');
+const ANDROID = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 
 function SettingCard({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -55,21 +56,28 @@ function statusLabelOf(source: SourceDef) {
 }
 
 function SourceRow({ source }: { source: SourceDef }) {
-  const { sourceState, toggleSource } = useApp();
+  const { sourceState, toggleSource, health, checkingSources } = useApp();
   const enabled = source.custom ? true : !!sourceState[source.key];
+  const probe = health[source.key];
+  const dotStatus = probe?.status === 'fail' ? 'experimental' as const : probe?.status === 'ok' ? 'ok' as const : source.status;
+  const latencyText = checkingSources
+    ? '测活中…'
+    : probe
+      ? probe.status === 'ok' ? `${probe.latency}ms` : '测活失败'
+      : source.latency > 0 ? `${source.latency}ms` : '未测活';
   return (
     <div className={`source-row ${enabled ? 'is-enabled' : ''}`}>
-      <StatusDot status={source.status} />
+      <StatusDot status={dotStatus} />
       <div className="source-row-main">
         <div className="source-row-title">
           <strong>{source.name}</strong>
-          <span className={`source-status source-status-${source.status}`}>{statusLabelOf(source)}</span>
-          {source.note && <span className="source-note">{source.note}</span>}
+          <span className={`source-status source-status-${dotStatus}`}>{statusLabelOf(source)}</span>
+          {probe?.status === 'fail' ? <span className="source-note">最近测活失败</span> : source.note ? <span className="source-note">{source.note}</span> : null}
         </div>
         <div className="source-row-meta">
           <span>{source.host}</span>
           <span>·</span>
-          <span>{source.latency > 0 ? `${source.latency}ms` : '未测活'}</span>
+          <span>{latencyText}</span>
         </div>
       </div>
       <Switch
@@ -101,7 +109,12 @@ export default function Settings() {
     clearHistory,
     history,
     updateInfo,
+    updateProgress,
+    updateInstalling,
+    installUpdate,
     checkUpdate,
+    checkSources,
+    checkingSources,
     toast,
   } = useApp();
   const [params] = useSearchParams();
@@ -110,6 +123,12 @@ export default function Settings() {
     requested && ['appearance', 'playback', 'sources', 'data', 'about'].includes(requested) ? requested : 'appearance',
   );
   const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    if (requested && ['appearance', 'playback', 'sources', 'data', 'about'].includes(requested)) {
+      setSection(requested);
+    }
+  }, [requested]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const customs = customDefs(customApis);
@@ -244,6 +263,20 @@ export default function Settings() {
               <SettingRow label="广告片段过滤" description="尝试移除 m3u8 中的广告分段">
                 <Switch checked={settings.adFilter} onChange={(value) => updateSettings({ adFilter: value })} />
               </SettingRow>
+              <SettingRow label="播放失败自动换源" description="当前源播放失败时依次尝试其他源">
+                <Switch checked={settings.autoSwitchSource} onChange={(value) => updateSettings({ autoSwitchSource: value })} />
+              </SettingRow>
+              <SettingRow label="默认音量" description={`当前 ${Math.round(settings.volume * 100)}%`}>
+                <input
+                  className="setting-volume"
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(settings.volume * 100)}
+                  onChange={(event) => updateSettings({ volume: Number(event.target.value) / 100 })}
+                  aria-label="默认音量"
+                />
+              </SettingRow>
               <SettingRow label="默认清晰度" description="源支持时会优先选择">
                 <div className="inline-select">
                   {['自动', '1080P', '4K'].map((item) => (
@@ -265,7 +298,9 @@ export default function Settings() {
                 <div className="source-summary-actions">
                   <Button size="sm" variant="ghost" icon="sparkles" onClick={setRecommendedSources}>仅推荐</Button>
                   <Button size="sm" variant="ghost" icon="check" onClick={() => setAllSources(true)}>全选</Button>
-                  <Button size="sm" variant="secondary" icon="refresh" onClick={() => toast('真实测活将在客户端内执行', 'success')}>测活</Button>
+                  <Button size="sm" variant="secondary" icon="refresh" disabled={checkingSources} onClick={checkSources}>
+                    {checkingSources ? '测活中…' : '测活'}
+                  </Button>
                 </div>
               </div>
 
@@ -367,8 +402,21 @@ export default function Settings() {
                   <div className="update-banner">
                     <Icon name="sparkles" size={16} />
                     <p>发现新版本 <strong>v{updateInfo.latest}</strong>，当前 v{APP_VERSION}</p>
-                    <Button size="sm" variant="primary" onClick={() => openExternal(updateInfo.url)}>前往下载</Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={updateInstalling}
+                      onClick={() => {
+                        if (ANDROID) void openExternal(updateInfo.url);
+                        else void installUpdate();
+                      }}
+                    >
+                      {ANDROID ? '前往下载' : updateInstalling ? `更新中 ${updateProgress ?? 0}%` : '下载并安装'}
+                    </Button>
                   </div>
+                )}
+                {updateInstalling && (
+                  <div className="progress update-progress"><span style={{ width: `${updateProgress ?? 0}%` }} /></div>
                 )}
                 <SettingRow label="检查更新" description={`当前版本 ${APP_VERSION}`}>
                   <Button

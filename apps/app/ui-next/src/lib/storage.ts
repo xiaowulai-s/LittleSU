@@ -9,6 +9,7 @@ export const KEYS = {
   favorites: 'lsu.favorites',
   theme: 'lsu.theme',
   settings: 'lsu.settings',
+  health: 'lsu.health',
 } as const;
 
 export interface HistoryRecord {
@@ -38,6 +39,8 @@ export interface PlaybackSettings {
   adFilter: boolean;
   quality: string;
   density: 'comfortable' | 'compact' | 'wide';
+  volume: number;
+  autoSwitchSource: boolean;
 }
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -118,13 +121,16 @@ export function saveTheme(theme: string): void {
 }
 
 export function loadSettings(): PlaybackSettings {
-  return readJson<PlaybackSettings>(KEYS.settings, {
+  const defaults: PlaybackSettings = {
     autoNext: true,
     remember: true,
     adFilter: true,
     quality: '自动',
     density: 'comfortable',
-  });
+    volume: 0.8,
+    autoSwitchSource: true,
+  };
+  return { ...defaults, ...readJson<Partial<PlaybackSettings>>(KEYS.settings, {}) };
 }
 
 export function saveSettings(settings: PlaybackSettings): void {

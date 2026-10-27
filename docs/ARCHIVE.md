@@ -38,3 +38,4 @@
 6. v1.2.5 起客户端内置推荐源；v1.2.6/1.2.7 扩展为全部 25 个点播源（默认勾选 10 个可用源）并新增直播页，网页版提供同清单的订阅文件，见 [`sources/README.md`](../sources/README.md)。
 7. v1.3.0 起客户端界面切换为 `apps/app/ui-next`（React + Vite + TypeScript，Lightframe 设计），旧静态界面 `apps/app/public` 保留用于回滚。
 8. v1.3.0 的 Android 构建失败（窗口命令未按平台区分），v1.3.1 修复并成为首个在 Android APK 中启用新前端的版本。
+9. v1.4.0 桌面端恢复应用内自动更新（updater/process 插件），播放器补齐音量/全屏/广告过滤/失败自动换源与源测活，并修复 Android WebView 宽度误判导致的桌面布局问题。

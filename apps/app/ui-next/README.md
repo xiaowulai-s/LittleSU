@@ -56,9 +56,12 @@ npm run tauri build
 - 源选择、历史、收藏、主题、播放偏好全部落 `localStorage`，兼容旧版 `selectedAPIs` / `customAPIs` / `viewingHistory` 键
 - 搜索：调用 Tauri 命令 `search_videos` 并行聚合已启用源，跨源去重、失败源提示；浏览器内自动回退示例数据
 - 详情：按 `ids` 拉取 CMS 详情，解析剧集与简介；HTML 详情源做 m3u8 兜底
-- 播放：hls.js + `fetch_text_native` / `fetch_bytes_native` 自定义 loader，绕过 WebView CORS；记忆进度与自动连播使用本地设置
+- 播放：hls.js + `fetch_text_native` / `fetch_bytes_native` 自定义 loader，绕过 WebView CORS；分享页解析、音量/静音、全屏、广告过滤、记忆进度、自动连播与失败自动换源
+- 桌面更新：设置页与启动检查均可下载并安装更新（Tauri updater），安装完成后自动重启；Android 引导下载 APK
+- 源测活：真实搜索测活、延迟/失败展示并持久化
 - 直播：真实解析 5 个内置 M3U / TXT 源（分组、搜索、频道播放）
 - 设置：导出 / 导入配置（含 SHA-256 校验），与旧版配置文件互通
+- 双端布局：Windows 侧栏 + 自定义标题栏与真实窗口控制；Android 按 UA 识别，顶栏 + 5 项底栏（v1.4.0 修复 WebView 宽度误判导致的桌面布局）
 
 ## 目录
 
@@ -74,8 +77,9 @@ npm run tauri build
 
 ## 待完成
 
-1. 播放器音量、全屏、广告过滤等细节控件
-2. 源测活与健康度展示、失败后切换到其他源重搜
-3. Windows / Android 打包回归，并把 `frontendDist` 正式切换到新前端
+1. Android 硬件返回键映射到路由返回
+2. 直播 EPG 节目单展示
+3. 测活失败源自动降权/停用
+4. 发布回归与截图更新
 
 截图仅用于设计确认；实际以运行中的界面为准。

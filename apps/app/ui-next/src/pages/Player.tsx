@@ -8,6 +8,7 @@ import { historyToTitle } from '../lib/adapters';
 import { useDetail } from '../lib/hooks';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
 import { httpText, isTauri } from '../lib/env';
+import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
 
 const speeds = [1, 1.25, 1.5, 2];
@@ -30,7 +31,16 @@ function mockEpisodes(title: Title): Episode[] {
 export default function Player() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { favoriteKeys, toggleFavorite, toast, getTitle, history, recordHistory, settings } = useApp();
+  const {
+    favoriteKeys,
+    toggleFavorite,
+    toast,
+    getTitle,
+    history,
+    recordHistory,
+    settings,
+    updateSettings,
+  } = useApp();
   const rawKey = id ? decodeURIComponent(id) : '';
 
   const baseTitle: Title | undefined = useMemo(() => {
@@ -40,8 +50,12 @@ export default function Player() {
     return record ? historyToTitle(record) : undefined;
   }, [rawKey, getTitle, history]);
 
-  const { title: detailed } = useDetail(baseTitle);
-  const title = detailed ?? baseTitle;
+  const historyRecord = history.find((item) => item.key === rawKey);
+  const [activeTitle, setActiveTitle] = useState<Title | undefined>(baseTitle);
+  const triedRef = useRef<Set<string>>(new Set());
+  const [switching, setSwitching] = useState(false);
+  const { title: detailed, loading: detailLoading } = useDetail(activeTitle);
+  const title = detailed ?? activeTitle;
 
   const episodes = useMemo<Episode[]>(() => {
     if (!title) return [];
@@ -50,7 +64,6 @@ export default function Player() {
     return mockEpisodes(title);
   }, [title]);
 
-  const historyRecord = history.find((item) => item.key === rawKey);
   const [episode, setEpisode] = useState(() => (historyRecord?.episodeIndex ?? 0) + 1);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -60,8 +73,12 @@ export default function Player() {
   const [videoError, setVideoError] = useState<string | null>(null);
   const [playableUrl, setPlayableUrl] = useState('');
   const [resolving, setResolving] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [fullscreen, setFullscreenState] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
+  const triedNextRef = useRef<(reason: string) => boolean>(() => false);
+  const fullscreenRef = useRef<() => void>(() => undefined);
 
   const current = episodes[episode - 1];
   const sourceUrl = current?.url || '';
@@ -69,6 +86,64 @@ export default function Player() {
   const isMock = !streamUrl && !resolving;
   const isFavorite = favoriteKeys.has(rawKey);
   const key = rawKey;
+
+  const uniqueVariants = useMemo(() => {
+    const map = new Map<string, { sourceKey: string; sourceName: string; vodId: string; playable: number }>();
+    (title?.variants || []).forEach((variant) => {
+      map.set(`${variant.sourceKey}:${variant.vodId}`, variant);
+    });
+    return Array.from(map.values());
+  }, [title?.variants]);
+
+  /* ---------- 路由切换时重置 ---------- */
+  useEffect(() => {
+    setActiveTitle(baseTitle);
+    triedRef.current = new Set();
+    setSwitching(false);
+    setVideoError(null);
+    setPlayableUrl('');
+    setProgress(0);
+    setCurrentTime(0);
+    setEpisode((historyRecord?.episodeIndex ?? 0) + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawKey]);
+
+  /* ---------- 播放失败自动换源 ---------- */
+  const tryNextVariant = useCallback((reason: string): boolean => {
+    if (!title || !settings.autoSwitchSource) return false;
+    const currentKey = title.key ?? title.id;
+    const next = uniqueVariants.find((variant) => {
+      const variantKey = `${variant.sourceKey}:${variant.vodId}`;
+      return variantKey !== currentKey && !triedRef.current.has(variantKey);
+    });
+    if (!next) return false;
+    const nextKey = `${next.sourceKey}:${next.vodId}`;
+    triedRef.current.add(currentKey);
+    triedRef.current.add(nextKey);
+    setSwitching(true);
+    setVideoError(`播放失败（${reason}），正在切换到 ${next.sourceName}…`);
+    setActiveTitle({
+      ...title,
+      key: nextKey,
+      id: nextKey,
+      source: next.sourceName,
+      sourceKey: next.sourceKey,
+      vodId: next.vodId,
+      episodesList: undefined,
+      playUrl: undefined,
+    });
+    setEpisode(1);
+    setProgress(0);
+    setCurrentTime(0);
+    setPlaying(true);
+    toast(`已自动切换到 ${next.sourceName}`, 'success');
+    window.setTimeout(() => setSwitching(false), 1500);
+    return true;
+  }, [title, uniqueVariants, settings.autoSwitchSource, toast]);
+
+  useEffect(() => {
+    triedNextRef.current = tryNextVariant;
+  }, [tryNextVariant]);
 
   /* ---------- 分享页 -> m3u8 解析 ---------- */
   useEffect(() => {
@@ -108,6 +183,7 @@ export default function Player() {
     return () => { cancelled = true; };
   }, [sourceUrl]);
 
+  /* ---------- HLS 初始化（含广告过滤） ---------- */
   useEffect(() => {
     const video = videoRef.current;
     if (hlsRef.current) {
@@ -127,11 +203,13 @@ export default function Player() {
     }).Hls;
     if (globalHls?.isSupported()) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const hls = new (globalHls as any)(hlsConfigWithNativeLoader());
+      const hls = new (globalHls as any)(hlsConfigWithNativeLoader(settings.adFilter));
       hls.loadSource(streamUrl);
       hls.attachMedia(video);
       hls.on(globalHls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; details?: string }) => {
-        if (data?.fatal) setVideoError(data.details || '播放失败');
+        if (!data?.fatal) return;
+        const handled = triedNextRef.current(data.details || '播放失败');
+        if (!handled) setVideoError(data.details || '播放失败');
       });
       hlsRef.current = hls as { destroy: () => void };
     } else {
@@ -144,7 +222,15 @@ export default function Player() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl]);
+  }, [streamUrl, settings.adFilter, resolving]);
+
+  /* ---------- 音量 ---------- */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.volume = muted ? 0 : settings.volume;
+    video.muted = muted;
+  }, [streamUrl, settings.volume, muted]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -200,6 +286,26 @@ export default function Player() {
     return () => window.clearInterval(timer);
   }, [isMock, playing]);
 
+  /* ---------- 全屏 ---------- */
+  const toggleFullscreen = useCallback(async () => {
+    const next = !fullscreen;
+    const ok = await setFullscreen(next);
+    if (!ok) {
+      toast('当前环境不支持全屏', 'warning');
+      return;
+    }
+    setFullscreenState(next);
+  }, [fullscreen, toast]);
+
+  useEffect(() => {
+    fullscreenRef.current = () => { void toggleFullscreen(); };
+  }, [toggleFullscreen]);
+
+  useEffect(() => () => {
+    if (fullscreen) void setFullscreen(false);
+  }, [fullscreen]);
+
+  /* ---------- 键盘快捷键 ---------- */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.code === 'Space') {
@@ -222,11 +328,11 @@ export default function Player() {
         if (!isMock && video) video.currentTime = Math.max(0, video.currentTime - 10);
         else setProgress((value) => Math.max(0, value - 5));
       }
-      if (event.key.toLowerCase() === 'f') toast('全屏播放将在 Tauri 中生效');
+      if (event.key.toLowerCase() === 'f') fullscreenRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isMock, toast]);
+  }, [isMock]);
 
   if (!title) {
     return (
@@ -261,8 +367,32 @@ export default function Player() {
     toast(`正在播放 ${episodes[index]?.name || `第 ${index + 1} 集`}`);
   };
 
+  const switchToVariant = (variant: { sourceKey: string; sourceName: string; vodId: string }) => {
+    if (!title) return;
+    const nextKey = `${variant.sourceKey}:${variant.vodId}`;
+    triedRef.current.add(title.key ?? title.id);
+    setActiveTitle({
+      ...title,
+      key: nextKey,
+      id: nextKey,
+      source: variant.sourceName,
+      sourceKey: variant.sourceKey,
+      vodId: variant.vodId,
+      episodesList: undefined,
+      playUrl: undefined,
+    });
+    setEpisode(1);
+    setProgress(0);
+    setCurrentTime(0);
+    setPlaying(true);
+    setVideoError(null);
+    toast(`已切换到 ${variant.sourceName}`, 'success');
+  };
+
   const totalSeconds = isMock ? (title.type === '电影' ? 7200 : 2700) : duration;
   const displayTime = isMock ? currentTime : progress > 0 ? (progress / 100) * duration : 0;
+  const activeVariantKey = `${title.sourceKey || ''}:${title.vodId || ''}`;
+  const statusText = switching || detailLoading ? '切换源中…' : isMock ? '演示播放' : '原生取流';
 
   return (
     <div className="player-page">
@@ -272,7 +402,7 @@ export default function Player() {
         </button>
         <div className="player-topbar-title">
           <strong>{title.name}</strong>
-          <span>{current?.name || '正片'} · {title.source} · {title.quality}{isMock ? ' · 演示' : ' · 原生取流'}</span>
+          <span>{current?.name || '正片'} · {title.source} · {title.quality} · {statusText}</span>
         </div>
         <div className="player-topbar-actions">
           <Chip>{title.quality}</Chip>
@@ -324,7 +454,7 @@ export default function Player() {
                 <Icon name="play" size={34} />
               </button>
             )}
-            {videoError && <div className="video-error">{videoError}，可尝试切换剧集或数据源</div>}
+            {videoError && <div className="video-error">{videoError}</div>}
             <div className="video-controls">
               <button type="button" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
                 <Icon name={playing ? 'pause' : 'play'} size={19} />
@@ -342,7 +472,22 @@ export default function Player() {
                 style={{ '--value': `${progress}%` } as CSSProperties}
               />
               <span className="video-time">{formatTime(totalSeconds)}</span>
-              <button type="button" onClick={() => toast('音量控制将在实现阶段接入')} aria-label="音量"><Icon name="volume" size={18} /></button>
+              <button type="button" onClick={() => setMuted((value) => !value)} aria-label={muted ? '取消静音' : '静音'}>
+                <Icon name="volume" size={18} />
+              </button>
+              <input
+                className="video-volume"
+                type="range"
+                min={0}
+                max={100}
+                value={muted ? 0 : Math.round(settings.volume * 100)}
+                onChange={(event) => {
+                  const value = Number(event.target.value) / 100;
+                  setMuted(value === 0);
+                  updateSettings({ volume: value });
+                }}
+                aria-label="音量"
+              />
               <button
                 type="button"
                 className="video-speed"
@@ -354,7 +499,9 @@ export default function Player() {
               >
                 {speeds[speedIndex]}x
               </button>
-              <button type="button" onClick={() => toast('全屏播放将在 Tauri 中生效')} aria-label="全屏"><Icon name="fullscreen" size={18} /></button>
+              <button type="button" onClick={() => { void toggleFullscreen(); }} aria-label={fullscreen ? '退出全屏' : '全屏'}>
+                <Icon name="fullscreen" size={18} />
+              </button>
             </div>
           </div>
 
@@ -387,13 +534,33 @@ export default function Player() {
             </div>
             <p className="player-synopsis">{title.synopsis}</p>
             <div className="player-source-line">
-              <span className="source-badge"><i className="status-dot status-ok" />{title.source}</span>
+              <span className="source-badge"><i className={`status-dot ${videoError ? 'status-experimental' : 'status-ok'}`} />{title.source}</span>
               <span>·</span>
               <span>{title.quality}</span>
               <span>·</span>
-              <span>{isMock ? '演示播放' : '原生取流'}</span>
+              <span>{statusText}</span>
+              <span>·</span>
+              <span>{settings.adFilter ? '广告过滤开' : '广告过滤关'}</span>
               {title.sources?.length ? <><span>·</span><span>{title.sources.slice(0, 3).join(' / ')}</span></> : null}
             </div>
+            {uniqueVariants.length > 1 && (
+              <div className="player-source-switch">
+                <span className="player-source-switch-label">播放源</span>
+                {uniqueVariants.map((variant) => {
+                  const variantKey = `${variant.sourceKey}:${variant.vodId}`;
+                  return (
+                    <button
+                      type="button"
+                      key={variantKey}
+                      className={variantKey === activeVariantKey ? 'is-active' : ''}
+                      onClick={() => variantKey !== activeVariantKey && switchToVariant(variant)}
+                    >
+                      {variant.sourceName}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -403,7 +570,16 @@ export default function Player() {
               <h3>选集</h3>
               <p>{title.type === '电影' ? '正片' : `共 ${Math.max(title.episodes, episodes.length)} 集`}</p>
             </div>
-            <button type="button" className="icon-btn" aria-label="切换源" onClick={() => toast('切换播放源将在下一阶段接入')}>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="切换源"
+              onClick={() => {
+                const next = uniqueVariants.find((variant) => `${variant.sourceKey}:${variant.vodId}` !== activeVariantKey);
+                if (next) switchToVariant(next);
+                else toast('当前只有这一个可用源');
+              }}
+            >
               <Icon name="refresh" size={17} />
             </button>
           </div>
@@ -422,7 +598,7 @@ export default function Player() {
           </div>
           <div className="episode-panel-foot">
             <Icon name="wifi" size={14} />
-            {settings.autoNext ? '自动连播已开启' : '自动连播已关闭'}
+            {settings.autoNext ? '自动连播开' : '自动连播关'} · {settings.autoSwitchSource ? '自动换源开' : '自动换源关'}
           </div>
         </aside>
       </div>
