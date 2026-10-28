@@ -91,6 +91,9 @@ function AndroidBackHandler() {
           closeDrawer();
           return;
         }
+        // 页面可以拦截返回（例如先退出播放页的全屏）
+        const backEvent = new CustomEvent('lsu:back', { cancelable: true });
+        if (!window.dispatchEvent(backEvent)) return;
         if (depth.current > 0) {
           navigate(-1);
           return;

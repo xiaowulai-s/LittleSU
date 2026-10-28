@@ -33,6 +33,7 @@ export default function Live() {
   const [epgDay, setEpgDay] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
 
@@ -41,6 +42,17 @@ export default function Live() {
   const epg = useEpg(selected, epgDateStr);
   const programNow = epgDay === 0 && epg.data ? currentProgram(epg.data.programs) : undefined;
   const programNext = epg.data ? nextProgram(epg.data.programs) : undefined;
+
+  /* Android 返回键：全屏时先退出全屏 */
+  useEffect(() => {
+    const onBack = (event: Event) => {
+      if (!cssFullscreen) return;
+      event.preventDefault();
+      setCssFullscreen(false);
+    };
+    window.addEventListener('lsu:back', onBack);
+    return () => window.removeEventListener('lsu:back', onBack);
+  }, [cssFullscreen]);
 
   useEffect(() => {
     if (!list.length) return;
@@ -122,7 +134,7 @@ export default function Live() {
   };
 
   return (
-    <div className="live-page">
+    <div className={`live-page ${cssFullscreen ? 'is-css-fullscreen' : ''}`}>
       <div className="live-head">
         <div>
           <div className="page-kicker"><i className="live-dot" />LIVE · 5 个内置直播源</div>
@@ -190,7 +202,7 @@ export default function Live() {
                 {Array.from({ length: 26 }, (_, index) => <i key={index} style={{ height: `${8 + ((index * 7) % 22)}px` }} />)}
               </div>
               <button type="button" onClick={() => toast('音量控制将在实现阶段接入')} aria-label="音量"><Icon name="volume" size={18} /></button>
-              <button type="button" onClick={() => toast('全屏播放将在 Tauri 中生效')} aria-label="全屏"><Icon name="fullscreen" size={18} /></button>
+              <button type="button" onClick={() => setCssFullscreen((value) => !value)} aria-label={cssFullscreen ? '退出全屏' : '全屏'}><Icon name="fullscreen" size={18} /></button>
             </div>
           </div>
           <div className="live-now">

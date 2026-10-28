@@ -40,6 +40,7 @@ export default function Player() {
     recordHistory,
     settings,
     updateSettings,
+    device,
   } = useApp();
   const rawKey = id ? decodeURIComponent(id) : '';
 
@@ -75,6 +76,7 @@ export default function Player() {
   const [resolving, setResolving] = useState(false);
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreenState] = useState(false);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   const triedNextRef = useRef<(reason: string) => boolean>(() => false);
@@ -289,13 +291,17 @@ export default function Player() {
   /* ---------- 全屏 ---------- */
   const toggleFullscreen = useCallback(async () => {
     const next = !fullscreen;
-    const ok = await setFullscreen(next);
-    if (!ok) {
-      toast('当前环境不支持全屏', 'warning');
+    if (device === 'android') {
+      // Android WebView 通常拿不到 Fullscreen API，直接铺满页面
+      setCssFullscreen(next);
+      setFullscreenState(next);
       return;
     }
+    const ok = await setFullscreen(next);
+    if (!ok) toast('已切换为页面内全屏', 'success');
+    setCssFullscreen(next);
     setFullscreenState(next);
-  }, [fullscreen, toast]);
+  }, [fullscreen, device, toast]);
 
   useEffect(() => {
     fullscreenRef.current = () => { void toggleFullscreen(); };
@@ -304,6 +310,19 @@ export default function Player() {
   useEffect(() => () => {
     if (fullscreen) void setFullscreen(false);
   }, [fullscreen]);
+
+  /* Android 返回键：全屏时先退出全屏，由 App 的返回处理派发 lsu:back */
+  useEffect(() => {
+    const onBack = (event: Event) => {
+      if (!cssFullscreen) return;
+      event.preventDefault();
+      setCssFullscreen(false);
+      setFullscreenState(false);
+      if (device !== 'android') void setFullscreen(false);
+    };
+    window.addEventListener('lsu:back', onBack);
+    return () => window.removeEventListener('lsu:back', onBack);
+  }, [cssFullscreen, device]);
 
   /* ---------- 键盘快捷键 ---------- */
   useEffect(() => {
@@ -329,10 +348,11 @@ export default function Player() {
         else setProgress((value) => Math.max(0, value - 5));
       }
       if (event.key.toLowerCase() === 'f') fullscreenRef.current();
+      if (event.key === 'Escape' && fullscreen) fullscreenRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isMock]);
+  }, [isMock, fullscreen]);
 
   if (!title) {
     return (
@@ -357,6 +377,16 @@ export default function Player() {
     setProgress(value);
     const video = videoRef.current;
     if (!isMock && video && video.duration) video.currentTime = (value / 100) * video.duration;
+  };
+
+  const skipBy = (seconds: number) => {
+    const video = videoRef.current;
+    if (!isMock && video && Number.isFinite(video.duration)) {
+      video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+      return;
+    }
+    // 演示模式按每秒 0.4% 估算
+    setProgress((value) => Math.max(0, Math.min(100, value + seconds * 0.4)));
   };
 
   const switchEpisode = (index: number) => {
@@ -395,7 +425,7 @@ export default function Player() {
   const statusText = switching || detailLoading ? '切换源中…' : isMock ? '演示播放' : '原生取流';
 
   return (
-    <div className="player-page">
+    <div className={`player-page ${cssFullscreen ? 'is-css-fullscreen' : ''}`}>
       <header className="player-topbar">
         <button type="button" className="player-back" onClick={() => navigate(-1)} aria-label="返回">
           <Icon name="back" size={19} />
@@ -459,6 +489,12 @@ export default function Player() {
               <button type="button" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
                 <Icon name={playing ? 'pause' : 'play'} size={19} />
               </button>
+              <button type="button" onClick={() => skipBy(-10)} aria-label="后退 10 秒">
+                <Icon name="rewind10" size={18} />
+              </button>
+              <button type="button" onClick={() => skipBy(10)} aria-label="前进 10 秒">
+                <Icon name="forward10" size={18} />
+              </button>
               <span className="video-time">{formatTime(displayTime)}</span>
               <input
                 className="video-progress"
@@ -472,7 +508,7 @@ export default function Player() {
                 style={{ '--value': `${progress}%` } as CSSProperties}
               />
               <span className="video-time">{formatTime(totalSeconds)}</span>
-              <button type="button" onClick={() => setMuted((value) => !value)} aria-label={muted ? '取消静音' : '静音'}>
+              <button type="button" className="video-volume-btn" onClick={() => setMuted((value) => !value)} aria-label={muted ? '取消静音' : '静音'}>
                 <Icon name="volume" size={18} />
               </button>
               <input
@@ -499,6 +535,16 @@ export default function Player() {
               >
                 {speeds[speedIndex]}x
               </button>
+              {episodes.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => switchEpisode(episode)}
+                  disabled={episode >= episodes.length}
+                  aria-label="下一集"
+                >
+                  <Icon name="skipNext" size={18} />
+                </button>
+              )}
               <button type="button" onClick={() => { void toggleFullscreen(); }} aria-label={fullscreen ? '退出全屏' : '全屏'}>
                 <Icon name="fullscreen" size={18} />
               </button>
