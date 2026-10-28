@@ -1,14 +1,12 @@
 {
   "name": "littlesu-tv-app",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "LittleSU TV — 免费在线视频搜索与观看平台（独立客户端）",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "npx tauri dev",
     "tauri": "tauri",
-    "serve:public": "serve public -l 3000 -s",
-    "build:css": "tailwindcss -i ./public/css/input.css -o ./public/css/styles.css --minify",
     "dev:ui-next": "npm --prefix ui-next run dev",
     "build:ui-next": "npm --prefix ui-next install --no-audit --no-fund && npm --prefix ui-next run build",
     "test:ui-next": "npm --prefix ui-next test"
@@ -25,10 +23,6 @@
   "author": "xiaowulai-s",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.4",
-    "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.3",
-    "serve": "^14.2.4",
-    "tailwindcss": "^4.1.7"
+    "@tauri-apps/cli": "^2.12.4"
   }
 }

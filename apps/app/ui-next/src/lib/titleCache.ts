@@ -17,6 +17,10 @@ export function getCachedTitle(key: string | undefined): Title | undefined {
   return cache.get(key);
 }
 
+export function clearTitleCache(): void {
+  cache.clear();
+}
+
 export function findAnyTitle(key: string | undefined, mockTitles: Title[]): Title | undefined {
   if (!key) return undefined;
   return cache.get(key) ?? mockTitles.find((t) => t.id === key);

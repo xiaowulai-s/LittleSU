@@ -84,6 +84,11 @@ export function customDefs(customs: CustomApi[]): SourceDef[] {
   }));
 }
 
+/** 参与批量搜索的源：内置里排除返回网页的 HTML 占位源，再并入自定义源。 */
+export function searchableSources(customs: CustomApi[] = []): SourceDef[] {
+  return [...SOURCES.filter((source) => source.status !== 'experimental'), ...customDefs(customs)];
+}
+
 export function loadSelectedKeys(): string[] {
   try {
     const raw = localStorage.getItem('selectedAPIs');

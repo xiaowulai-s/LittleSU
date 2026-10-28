@@ -63,7 +63,7 @@ npm run tauri build    # 自动 npm ci + 构建前端，再打包安装包
 npm run test:ui-next   # 前端解析层单测
 ```
 
-旧版静态界面保留在 `public/`，如需回滚把 `src-tauri/tauri.conf.json` 的 `frontendDist` 改回 `../public`。
+v1.5.0 起旧静态界面 `public/` 与 Tailwind 构建脚本已移除，前端只保留 `ui-next`；需要回滚旧界面可从 git 历史检出对应提交。
 
 ## 更新与播放（v1.4.0）
 
@@ -92,14 +92,13 @@ npm run test:ui-next   # 前端解析层单测
 
 ## 修改内置采集源
 
-编辑 `js/config.js` 中的 `API_SITES`（标准苹果CMS JSON 接口格式），推 `v*` 标签重新发布即可。
+内置源在 `ui-next/src/lib/sources.ts` 的 `SOURCES` 中维护（标准苹果 CMS JSON 接口）；用户自定义源在「设置 → 数据源」里添加，保存在本机 `customAPIs`。返回网页而非 JSON 的实验源保留为占位，不参与批量搜索。
 
 ## 目录说明
 
-- `index.html` / `watch.html` / `player.html` — 应用页面（直接运行的前端）
-- `js/` — 前端逻辑（搜索聚合、播放器、豆瓣、设置）
+- `ui-next/` — 正式前端（React + Vite + TypeScript）
 - `src-tauri/` — Tauri 壳（Rust）与平台配置
-- `public/` — Tauri 打包使用的前端目录（含安卓修正版）
+- `sources/`（仓库根目录）— 内置源清单与导入文件
 - 仓库根目录 `.github/workflows/app-release.yml` — 全平台发布流水线（本目录内不再单独维护工作流）
 
 ## 免责声明

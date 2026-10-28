@@ -24,6 +24,10 @@ export interface EpgResult {
 
 const cache = new Map<string, { at: number; value: EpgResult | null }>();
 
+export function clearEpgCache(): void {
+  cache.clear();
+}
+
 /** 本地日期（YYYY-MM-DD），offset 为天数偏移。 */
 export function epgDate(offset = 0): string {
   const date = new Date();

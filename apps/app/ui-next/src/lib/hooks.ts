@@ -5,7 +5,7 @@ import { useApp } from '../store';
 import { applyDetail, buildTitle, dedupeTitles, parseDetail, parseSearchResponse } from './cms';
 import type { CmsItem } from './cms';
 import { httpJson, httpText, isTauri, rustSearch } from './env';
-import { SOURCES, customDefs, detailUrlFor, findSource, isSourceHealthy, latestUrlFor } from './sources';
+import { detailUrlFor, findSource, isSourceHealthy, latestUrlFor, searchableSources } from './sources';
 import type { SourceDef } from './sources';
 import { parsePlaylist } from './liveParser';
 import type { LiveChannel } from './liveParser';
@@ -49,9 +49,9 @@ export function useSearch(query: string, scope: SearchScope = 'recommended'): Se
   const { activeSources, health, customApis } = useApp();
 
   const targets = useMemo<SourceDef[]>(() => {
-    if (scope === 'all') return [...SOURCES, ...customDefs(customApis)];
+    if (scope === 'all') return searchableSources(customApis);
     if (scope === 'ok') {
-      return [...SOURCES, ...customDefs(customApis)].filter((source) => isSourceHealthy(source, health));
+      return searchableSources(customApis).filter((source) => isSourceHealthy(source, health));
     }
     return activeSources;
   }, [scope, activeSources, health, customApis]);

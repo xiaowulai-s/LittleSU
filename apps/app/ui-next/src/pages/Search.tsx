@@ -6,7 +6,7 @@ import { Icon } from '../icons';
 import { useApp } from '../store';
 import { useSearch } from '../lib/hooks';
 import type { SearchScope } from '../lib/hooks';
-import { SOURCES, customDefs, isSourceHealthy } from '../lib/sources';
+import { isSourceHealthy, searchableSources } from '../lib/sources';
 import { Button, Chip, EmptyState, Poster, SectionHeader } from '../ui';
 
 const typeFilters = ['全部', '电影', '剧集', '纪录片', '动画'] as const;
@@ -26,7 +26,7 @@ export default function Search() {
   const [scope, setScope] = useState<SearchScope>('recommended');
   const { loading, results, failures, real, total } = useSearch(urlQuery, scope);
 
-  const allSources = useMemo(() => [...SOURCES, ...customDefs(customApis)], [customApis]);
+  const allSources = useMemo(() => searchableSources(customApis), [customApis]);
   const okCount = useMemo(
     () => allSources.filter((source) => isSourceHealthy(source, health)).length,
     [allSources, health],

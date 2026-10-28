@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { FormEvent, ReactNode } from 'react';
 import { SOURCES, customDefs } from '../lib/sources';
 import type { SourceDef } from '../lib/sources';
+import { clearAppCaches } from '../lib/cache';
 import { KEYS } from '../lib/storage';
 import { APP_VERSION } from '../lib/version';
 import { openExternal } from '../lib/window';
@@ -472,9 +473,18 @@ export default function Settings() {
                   </Button>
                 </SettingRow>
               </SettingCard>
-              <SettingCard title="缓存" description="接口与封面缓存由系统管理。">
-                <SettingRow label="清理缓存" description="不会影响历史与收藏">
-                  <Button size="sm" variant="ghost" onClick={() => toast('已发送清理请求', 'success')}>清理</Button>
+              <SettingCard title="缓存" description="豆瓣、节目单与详情的内存缓存，以及浏览器缓存分区。">
+                <SettingRow label="清理缓存" description="不会影响历史、收藏与设置">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      const { partitions } = await clearAppCaches();
+                      toast(partitions ? `已清理缓存（${partitions} 个缓存分区）` : '已清理内存缓存', 'success');
+                    }}
+                  >
+                    清理
+                  </Button>
                 </SettingRow>
               </SettingCard>
               <input

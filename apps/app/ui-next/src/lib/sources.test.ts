@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSourceHealthy } from './sources';
+import { SOURCES, isSourceHealthy, searchableSources } from './sources';
 import type { SourceDef } from './sources';
 
 const base: SourceDef = { key: 'demo', name: 'Demo', host: 'demo.test', base: 'https://demo.test', status: 'ok', latency: 0 };
@@ -17,5 +17,15 @@ describe('isSourceHealthy', () => {
 
   it('自定义源在未测活时默认可用', () => {
     expect(isSourceHealthy({ ...base, custom: true, status: 'backup' }, {})).toBe(true);
+  });
+});
+
+describe('searchableSources', () => {
+  it('批量搜索排除 HTML 占位源并并入自定义源', () => {
+    const list = searchableSources([{ name: '自定义', url: 'https://custom.test' }]);
+    const experimentalCount = SOURCES.filter((source) => source.status === 'experimental').length;
+    expect(list).toHaveLength(SOURCES.length - experimentalCount + 1);
+    expect(list.some((source) => source.status === 'experimental')).toBe(false);
+    expect(list.at(-1)?.custom).toBe(true);
   });
 });

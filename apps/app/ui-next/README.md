@@ -1,6 +1,6 @@
 # Lightframe · LittleSU TV 新前端
 
-LittleSU TV 独立客户端（Windows + Android）的新界面与新数据层：React + Vite + TypeScript。v1.3.0 起为客户端正式入口；旧版 `apps/app/public` 仍保留在仓库中用于回滚。
+LittleSU TV 独立客户端（Windows + Android）的新界面与新数据层：React + Vite + TypeScript。v1.3.0 起为客户端正式入口；v1.5.0 起旧版 `apps/app/public` 已移除，回滚需从 git 历史检出。
 
 ## 运行（浏览器预览）
 
@@ -36,7 +36,7 @@ npm run tauri build
 
 单独调试前端：`cd apps/app/ui-next && npm run dev`，浏览器打开 http://localhost:5174。
 
-旧版 `apps/app/public` 仍保留在仓库中，如需回滚，把 `frontendDist` 改回 `../public` 即可。
+旧静态界面已在 v1.5.0 移除；需要对照旧实现时从 git 历史（v1.4.x 及更早）检出。
 
 ## 预览链接
 
@@ -81,8 +81,8 @@ npm run tauri build
 
 ## 待完成
 
-1. 发布回归与截图更新
-2. 旧静态界面 `apps/app/public` 清理
-3. HTML 实验源适配（当前仅占位）
+1. 应用内更新的真实旧版→新版安装回归
+2. HTML 实验源适配（当前保留占位，不参与批量搜索）
+3. Android 真机回归截图
 
 截图仅用于设计确认；实际以运行中的界面为准。

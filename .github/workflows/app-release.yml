@@ -23,6 +23,30 @@ jobs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
       release_id: ${{ steps.create_release.outputs.id }}
     steps:
+      # 发布说明放在 docs/releases/<tag>.md，存在时作为 Release 正文
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs/releases
+          sparse-checkout-cone-mode: false
+
+      - name: Read release notes
+        id: notes
+        working-directory: .
+        run: |
+          FILE="docs/releases/${{ github.ref_name }}.md"
+          if [ -f "$FILE" ]; then
+            {
+              echo 'body<<RELEASE_NOTES_EOF'
+              cat "$FILE"
+              echo ''
+              echo 'RELEASE_NOTES_EOF'
+            } >> "$GITHUB_OUTPUT"
+            echo "Loaded release notes from $FILE"
+          else
+            echo "No release notes file for ${{ github.ref_name }}, publishing with empty body"
+          fi
+
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
@@ -31,6 +55,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           release_name: Release ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
           draft: false          # Set to true if you want to manually publish the release
           prerelease: false     # Set to true if this is a pre-release
 

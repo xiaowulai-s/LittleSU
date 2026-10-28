@@ -37,6 +37,10 @@ export interface DoubanItem {
 
 const cache = new Map<string, { at: number; items: DoubanItem[] }>();
 
+export function clearDoubanCache(): void {
+  cache.clear();
+}
+
 export async function fetchDouban(tagKey: DoubanTag, limit = 18): Promise<DoubanItem[]> {
   const config = DOUBAN_TAGS.find((item) => item.key === tagKey);
   if (!config) throw new Error('未知的豆瓣榜单');

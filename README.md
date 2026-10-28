@@ -40,8 +40,9 @@ git commit -am "v<x.y.z>：版本号同步"
 git tag v<x.y.z> && git push origin main v<x.y.z>
 ```
 
-工作流跑完后由 `finalize_release` 统一收尾：
+发布说明写在 `docs/releases/<tag>.md`（例如 `docs/releases/v1.5.0.md`），打标签时会作为 Release 正文。
 
+工作流跑完后由 `finalize_release` 统一收尾：
 - 把 macOS（`darwin-aarch64`）条目合并进 `latest.json`，桌面端各平台都能收到更新；
 - 用 updater 公钥对 `latest.json` 里的每个平台产物做 minisign 校验，并核对签名内嵌版本与清单版本一致；
 - 生成覆盖全部发布资产的 `SHA256SUMS`，下载后可自检：
@@ -78,7 +79,7 @@ cd apps/app && npm install && npx tauri dev
 仓库内置一份实测/整理的源清单，用户无需自行收集：
 
 - **网页版**：设置 → 数据源订阅，粘贴 `https://raw.githubusercontent.com/xiaowulai-s/LittleSU/main/sources/littlesu-sources.json` 即可导入 25 个点播源 + 4 个直播源。
-- **独立客户端**：v1.2.7 起内置全部 25 个点播源和 5 个直播源（新增「直播」页），默认勾选 10 个实测可用源，其余可在设置中启用；旧版本可导入 `sources/littlesu-app-settings.json`。
+- **独立客户端**：v1.2.7 起内置全部 25 个点播源和 5 个直播源（新增「直播」页），默认勾选 10 个实测可用源，其余可在设置中启用；其中 3 个返回网页的实验源仅保留占位，不参与批量搜索；旧版本可导入 `sources/littlesu-app-settings.json`。
 - 每个源的状态、默认选中项和免责声明见 [`sources/README.md`](./sources/README.md)。
 
 ## 免责声明
