@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import Hls from 'hls.js';
 import { channels as mockChannelData, liveSources } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
@@ -35,7 +36,7 @@ export default function Live() {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [cssFullscreen, setCssFullscreen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<{ destroy: () => void } | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
   const selected = list.find((channel) => channel.id === selectedId) ?? list[0];
   const epgDateStr = useMemo(() => epgDate(epgDay), [epgDay]);
@@ -72,18 +73,14 @@ export default function Live() {
       setPlaying(false);
       return;
     }
-    const globalHls = (window as unknown as {
-      Hls?: { isSupported: () => boolean; Events: { ERROR: string } };
-    }).Hls;
-    if (globalHls?.isSupported()) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const hls = new (globalHls as any)(hlsConfigWithNativeLoader());
+    if (Hls.isSupported()) {
+      const hls = new Hls(hlsConfigWithNativeLoader());
       hls.loadSource(url);
       hls.attachMedia(video);
-      hls.on(globalHls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; details?: string }) => {
+      hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data?.fatal) setPlayerError(data.details || '频道播放失败');
       });
-      hlsRef.current = hls as { destroy: () => void };
+      hlsRef.current = hls;
     } else {
       video.src = url;
     }

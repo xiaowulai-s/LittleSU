@@ -1,3 +1,4 @@
+import Hls from 'hls.js';
 import { filterAdsFromM3U8 } from './adFilter';
 import { httpBytes, httpText, isTauri } from './env';
 
@@ -39,8 +40,7 @@ function isPlaylistContext(context: LoaderContext): boolean {
 /** 用 Tauri 原生取流替换 hls.js 默认 XHR loader，绕过 WebView CORS。 */
 export function createNativeHlsLoader(filterAds = false): LoaderCtor | null {
   if (!isTauri()) return null;
-  const globalHls = (window as unknown as { Hls?: { DefaultConfig?: { loader?: LoaderCtor } } }).Hls;
-  const Base = globalHls?.DefaultConfig?.loader;
+  const Base = Hls.DefaultConfig.loader as unknown as LoaderCtor | undefined;
   if (!Base) return null;
 
   return class NativeHlsLoader extends Base {
@@ -106,8 +106,7 @@ export function createNativeHlsLoader(filterAds = false): LoaderCtor | null {
 /** 浏览器调试时对默认 loader 的播放列表做同样的广告过滤。 */
 function createBrowserFilteringLoader(filterAds: boolean): LoaderCtor | null {
   if (!filterAds) return null;
-  const globalHls = (window as unknown as { Hls?: { DefaultConfig?: { loader?: LoaderCtor } } }).Hls;
-  const Base = globalHls?.DefaultConfig?.loader;
+  const Base = Hls.DefaultConfig.loader as unknown as LoaderCtor | undefined;
   if (!Base) return null;
 
   return class BrowserFilteringLoader extends Base {

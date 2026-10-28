@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, TouchEvent as ReactTouchEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import Hls from 'hls.js';
 import type { Episode, Title } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
 import { historyToTitle } from '../lib/adapters';
 import { useDetail } from '../lib/hooks';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
+import { clampBrightness, clampVolume, gestureRatio } from '../lib/gesture';
 import { httpText, isTauri } from '../lib/env';
 import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
@@ -77,8 +79,20 @@ export default function Player() {
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreenState] = useState(false);
   const [cssFullscreen, setCssFullscreen] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain');
+  const [brightness, setBrightness] = useState(1);
+  const [gestureHud, setGestureHud] = useState<{ kind: 'brightness' | 'volume'; value: number } | null>(null);
+  const [subtitleTracks, setSubtitleTracks] = useState<{ id: number; label: string }[]>([]);
+  const [audioTracks, setAudioTracks] = useState<{ id: number; label: string }[]>([]);
+  const [subtitleId, setSubtitleId] = useState(-1);
+  const [audioId, setAudioId] = useState(0);
+  const [pipSupported, setPipSupported] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<{ destroy: () => void } | null>(null);
+  const hlsRef = useRef<Hls | null>(null);
+  const hudTimer = useRef<number | null>(null);
+  const gestureRef = useRef<{ kind: 'brightness' | 'volume'; startY: number; startValue: number } | null>(null);
   const triedNextRef = useRef<(reason: string) => boolean>(() => false);
   const fullscreenRef = useRef<() => void>(() => undefined);
 
@@ -200,20 +214,40 @@ export default function Player() {
       return;
     }
 
-    const globalHls = (window as unknown as {
-      Hls?: { isSupported: () => boolean; Events: { ERROR: string } };
-    }).Hls;
-    if (globalHls?.isSupported()) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const hls = new (globalHls as any)(hlsConfigWithNativeLoader(settings.adFilter));
+    setSubtitleTracks([]);
+    setAudioTracks([]);
+    setSubtitleId(-1);
+    setAudioId(0);
+    setLocked(false);
+    if (Hls.isSupported()) {
+      const hls = new Hls(hlsConfigWithNativeLoader(settings.adFilter));
       hls.loadSource(streamUrl);
       hls.attachMedia(video);
-      hls.on(globalHls.Events.ERROR, (_event: unknown, data: { fatal?: boolean; details?: string }) => {
+      const syncTracks = () => {
+        setSubtitleTracks(
+          (hls.subtitleTracks || []).map((track, index) => ({
+            id: index,
+            label: track.name || track.lang || `字幕 ${index + 1}`,
+          })),
+        );
+        setAudioTracks(
+          (hls.audioTracks || []).map((track, index) => ({
+            id: index,
+            label: track.name || track.lang || `音轨 ${index + 1}`,
+          })),
+        );
+        setSubtitleId(hls.subtitleTrack ?? -1);
+        setAudioId(hls.audioTrack ?? 0);
+      };
+      hls.on(Hls.Events.MANIFEST_PARSED, syncTracks);
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, syncTracks);
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, syncTracks);
+      hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data?.fatal) return;
         const handled = triedNextRef.current(data.details || '播放失败');
         if (!handled) setVideoError(data.details || '播放失败');
       });
-      hlsRef.current = hls as { destroy: () => void };
+      hlsRef.current = hls;
     } else {
       video.src = streamUrl;
     }
@@ -233,6 +267,27 @@ export default function Player() {
     video.volume = muted ? 0 : settings.volume;
     video.muted = muted;
   }, [streamUrl, settings.volume, muted]);
+
+  useEffect(() => {
+    setPipSupported(typeof document !== 'undefined' && document.pictureInPictureEnabled === true);
+  }, []);
+
+  /* 原生播放（无 hls.js）时从 video.textTracks 读取字幕轨 */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const sync = () => {
+      if (hlsRef.current) return;
+      setSubtitleTracks(
+        Array.from(video.textTracks).map((track, index) => ({
+          id: index,
+          label: track.label || track.language || `字幕 ${index + 1}`,
+        })),
+      );
+    };
+    video.addEventListener('loadedmetadata', sync);
+    return () => video.removeEventListener('loadedmetadata', sync);
+  }, [streamUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -291,6 +346,10 @@ export default function Player() {
   /* ---------- 全屏 ---------- */
   const toggleFullscreen = useCallback(async () => {
     const next = !fullscreen;
+    if (!next) {
+      setLocked(false);
+      setSheetOpen(false);
+    }
     if (device === 'android') {
       // Android WebView 通常拿不到 Fullscreen API，直接铺满页面
       setCssFullscreen(next);
@@ -311,9 +370,14 @@ export default function Player() {
     if (fullscreen) void setFullscreen(false);
   }, [fullscreen]);
 
-  /* Android 返回键：全屏时先退出全屏，由 App 的返回处理派发 lsu:back */
+  /* Android 返回键：锁屏/全屏时先退出对应状态，由 App 的返回处理派发 lsu:back */
   useEffect(() => {
     const onBack = (event: Event) => {
+      if (locked) {
+        event.preventDefault();
+        setLocked(false);
+        return;
+      }
       if (!cssFullscreen) return;
       event.preventDefault();
       setCssFullscreen(false);
@@ -322,7 +386,7 @@ export default function Player() {
     };
     window.addEventListener('lsu:back', onBack);
     return () => window.removeEventListener('lsu:back', onBack);
-  }, [cssFullscreen, device]);
+  }, [cssFullscreen, locked, device]);
 
   /* ---------- 键盘快捷键 ---------- */
   useEffect(() => {
@@ -348,11 +412,14 @@ export default function Player() {
         else setProgress((value) => Math.max(0, value - 5));
       }
       if (event.key.toLowerCase() === 'f') fullscreenRef.current();
-      if (event.key === 'Escape' && fullscreen) fullscreenRef.current();
+      if (event.key === 'Escape') {
+        if (locked) setLocked(false);
+        else if (fullscreen) fullscreenRef.current();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isMock, fullscreen]);
+  }, [isMock, fullscreen, locked]);
 
   if (!title) {
     return (
@@ -387,6 +454,92 @@ export default function Player() {
     }
     // 演示模式按每秒 0.4% 估算
     setProgress((value) => Math.max(0, Math.min(100, value + seconds * 0.4)));
+  };
+
+  const selectSubtitle = (id: number) => {
+    const hls = hlsRef.current;
+    if (hls) {
+      hls.subtitleTrack = id;
+      hls.subtitleDisplay = id >= 0;
+    } else {
+      const video = videoRef.current;
+      if (video) {
+        Array.from(video.textTracks).forEach((track, index) => {
+          track.mode = index === id ? 'showing' : 'disabled';
+        });
+      }
+    }
+    setSubtitleId(id);
+  };
+
+  const selectAudio = (id: number) => {
+    if (hlsRef.current) hlsRef.current.audioTrack = id;
+    setAudioId(id);
+  };
+
+  const togglePip = async () => {
+    const video = videoRef.current;
+    if (!video || !pipSupported) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+    } catch {
+      toast('当前环境不支持画中画', 'warning');
+    }
+  };
+
+  const flashHud = (kind: 'brightness' | 'volume', value: number) => {
+    setGestureHud({ kind, value });
+    if (hudTimer.current) window.clearTimeout(hudTimer.current);
+    hudTimer.current = window.setTimeout(() => setGestureHud(null), 700);
+  };
+
+  const onSurfaceTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (!cssFullscreen || locked || sheetOpen) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.video-controls, .player-sheet-layer, .player-unlock')) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const left = touch.clientX < window.innerWidth / 2;
+    gestureRef.current = {
+      kind: left ? 'brightness' : 'volume',
+      startY: touch.clientY,
+      startValue: left ? brightness : (videoRef.current?.volume ?? settings.volume),
+    };
+  };
+
+  const onSurfaceTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    const touch = event.touches[0];
+    if (!gesture || !touch) return;
+    const delta = gestureRatio(gesture.startY, touch.clientY, window.innerHeight);
+    if (gesture.kind === 'brightness') {
+      const value = clampBrightness(gesture.startValue + delta * 1.3);
+      setBrightness(value);
+      flashHud('brightness', value);
+      return;
+    }
+    const value = clampVolume(gesture.startValue + delta);
+    const video = videoRef.current;
+    if (video) {
+      video.volume = value;
+      video.muted = value === 0;
+    }
+    setMuted(value === 0);
+    flashHud('volume', value);
+  };
+
+  const onSurfaceTouchEnd = () => {
+    const gesture = gestureRef.current;
+    gestureRef.current = null;
+    if (gesture?.kind === 'volume') {
+      updateSettings({ volume: videoRef.current?.volume ?? settings.volume });
+    }
+  };
+
+  const lockScreen = () => {
+    setLocked(true);
+    setSheetOpen(false);
   };
 
   const switchEpisode = (index: number) => {
@@ -444,7 +597,13 @@ export default function Player() {
 
       <div className="player-body">
         <div className="player-main">
-          <div className="video-surface" style={{ '--h': title.hue } as CSSProperties}>
+          <div
+            className={`video-surface ${locked ? 'is-locked' : ''}`}
+            style={{ '--h': title.hue } as CSSProperties}
+            onTouchStart={onSurfaceTouchStart}
+            onTouchMove={onSurfaceTouchMove}
+            onTouchEnd={onSurfaceTouchEnd}
+          >
             <div className="video-bg" />
             <div className="video-glow" />
             <div className="video-grain" />
@@ -452,6 +611,10 @@ export default function Player() {
               ref={videoRef}
               className={`video-el ${isMock ? 'is-hidden' : ''}`}
               playsInline
+              style={{
+                objectFit: fitMode,
+                filter: brightness !== 1 ? `brightness(${brightness})` : undefined,
+              }}
               onTimeUpdate={(event) => {
                 const video = event.currentTarget;
                 setCurrentTime(video.currentTime);
@@ -507,7 +670,7 @@ export default function Player() {
                 aria-label="播放进度"
                 style={{ '--value': `${progress}%` } as CSSProperties}
               />
-              <span className="video-time">{formatTime(totalSeconds)}</span>
+              <span className="video-time video-time-total">{formatTime(totalSeconds)}</span>
               <button type="button" className="video-volume-btn" onClick={() => setMuted((value) => !value)} aria-label={muted ? '取消静音' : '静音'}>
                 <Icon name="volume" size={18} />
               </button>
@@ -545,10 +708,30 @@ export default function Player() {
                   <Icon name="skipNext" size={18} />
                 </button>
               )}
+              <button type="button" onClick={() => setSheetOpen(true)} aria-label="播放设置">
+                <Icon name="more" size={18} />
+              </button>
               <button type="button" onClick={() => { void toggleFullscreen(); }} aria-label={fullscreen ? '退出全屏' : '全屏'}>
                 <Icon name="fullscreen" size={18} />
               </button>
             </div>
+
+            {locked && (
+              <button type="button" className="player-unlock" onClick={() => setLocked(false)} aria-label="解锁控制">
+                <Icon name="lock" size={15} />
+                已锁定 · 点击解锁
+              </button>
+            )}
+
+            {gestureHud && (
+              <div className="player-gesture-hud" aria-hidden="true">
+                <Icon name={gestureHud.kind === 'brightness' ? 'sun' : 'volume'} size={20} />
+                <strong>{Math.round(gestureHud.value * 100)}%</strong>
+                <span>{gestureHud.kind === 'brightness' ? '亮度' : '音量'}</span>
+              </div>
+            )}
+
+
           </div>
 
           <div className="player-meta">
@@ -648,6 +831,83 @@ export default function Player() {
           </div>
         </aside>
       </div>
+            {sheetOpen && !locked && (
+              <div className="player-sheet-layer" role="dialog" aria-modal="true" aria-label="播放设置">
+                <button type="button" className="player-sheet-scrim" aria-label="关闭设置" onClick={() => setSheetOpen(false)} />
+                <div className="player-sheet">
+                  <div className="player-sheet-head">
+                    <strong>播放设置</strong>
+                    <button type="button" className="icon-btn" onClick={() => setSheetOpen(false)} aria-label="关闭">
+                      <Icon name="close" size={16} />
+                    </button>
+                  </div>
+                  <div className="player-sheet-body">
+                    <div className="player-sheet-section">
+                      <span className="player-sheet-label">画面比例</span>
+                      <div className="player-sheet-chips">
+                        <Chip active={fitMode === 'contain'} onClick={() => setFitMode('contain')}>自适应</Chip>
+                        <Chip active={fitMode === 'cover'} onClick={() => setFitMode('cover')}>填满</Chip>
+                      </div>
+                    </div>
+                    <div className="player-sheet-section">
+                      <span className="player-sheet-label">字幕</span>
+                      <div className="player-sheet-chips">
+                        <Chip active={subtitleId < 0} onClick={() => selectSubtitle(-1)}>关闭</Chip>
+                        {subtitleTracks.map((track) => (
+                          <Chip key={track.id} active={subtitleId === track.id} onClick={() => selectSubtitle(track.id)}>
+                            {track.label}
+                          </Chip>
+                        ))}
+                      </div>
+                      {!subtitleTracks.length && <small className="player-sheet-hint">当前源未提供字幕轨</small>}
+                    </div>
+                    <div className="player-sheet-section">
+                      <span className="player-sheet-label">音轨</span>
+                      <div className="player-sheet-chips">
+                        {audioTracks.map((track) => (
+                          <Chip key={track.id} active={audioId === track.id} onClick={() => selectAudio(track.id)}>
+                            {track.label}
+                          </Chip>
+                        ))}
+                      </div>
+                      {!audioTracks.length && <small className="player-sheet-hint">当前源未提供多音轨</small>}
+                    </div>
+                    <div className="player-sheet-section">
+                      <span className="player-sheet-label">选集 · 共 {episodes.length} 集</span>
+                      <div className="player-sheet-episodes">
+                        {episodes.map((item, index) => (
+                          <button
+                            type="button"
+                            key={`${item.name}-${index}`}
+                            className={`player-sheet-episode ${episode === index + 1 ? 'is-active' : ''}`}
+                            onClick={() => { switchEpisode(index); setSheetOpen(false); }}
+                          >
+                            {item.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="player-sheet-actions">
+                      {pipSupported && (
+                        <button type="button" onClick={() => { setSheetOpen(false); void togglePip(); }}>
+                          <Icon name="pip" size={16} />
+                          画中画
+                        </button>
+                      )}
+                      {cssFullscreen && (
+                        <button type="button" onClick={lockScreen}>
+                          <Icon name="lock" size={16} />
+                          锁定屏幕
+                        </button>
+                      )}
+                    </div>
+                    <p className="player-sheet-tip">
+                      全屏时：左侧上下滑调亮度，右侧上下滑调音量；锁定后可避免误触。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
     </div>
   );
 }

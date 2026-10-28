@@ -56,7 +56,7 @@ npm run tauri build
 - 源选择、历史、收藏、主题、播放偏好全部落 `localStorage`，兼容旧版 `selectedAPIs` / `customAPIs` / `viewingHistory` 键
 - 搜索：调用 Tauri 命令 `search_videos` 并行聚合已启用源，跨源去重、失败源提示；浏览器内自动回退示例数据
 - 详情：按 `ids` 拉取 CMS 详情，解析剧集与简介；HTML 详情源做 m3u8 兜底
-- 播放：hls.js + `fetch_text_native` / `fetch_bytes_native` 自定义 loader，绕过 WebView CORS；分享页解析、音量/静音、±10 秒、倍速、下一集、页面内全屏（Android）、广告过滤、记忆进度、自动连播与失败自动换源
+- 播放：内置 hls.js + `fetch_text_native` / `fetch_bytes_native` 自定义 loader，绕过 WebView CORS；分享页解析、音量/静音、±10 秒、倍速、下一集、页面内全屏（Android）、画中画、锁屏、亮度/音量手势、画面比例、字幕/音轨、全屏选集、广告过滤、记忆进度、自动连播与失败自动换源
 - 桌面更新：设置页与启动检查均可下载并安装更新（Tauri updater），安装完成后自动重启；Android 引导下载 APK（v1.4.1 起 macOS 也进入 `latest.json`，并启用 `requireSignedVersion` 绑定签名版本）
 - 源测活：真实搜索测活、延迟/失败展示并持久化；测活失败的已启用源会自动停用
 - 搜索范围：推荐源 / 全部源 / 测活可用 三种范围真正影响请求的源集合与并发

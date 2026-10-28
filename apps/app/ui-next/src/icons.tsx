@@ -39,7 +39,9 @@ export type IconName =
   | 'edit'
   | 'rewind10'
   | 'forward10'
-  | 'skipNext';
+  | 'skipNext'
+  | 'pip'
+  | 'lock';
 
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h5v-6h4v6h5V9.5" /></>,
@@ -81,6 +83,8 @@ const paths: Record<IconName, ReactNode> = {
   rewind10: <><path d="M4 5v5h5" /><path d="M4.7 10a7.5 7.5 0 1 1 2.2 5.3" /><text x="12.4" y="16.4" textAnchor="middle" fontSize="6.4" fontWeight="600" fill="currentColor" stroke="none">10</text></>,
   forward10: <><path d="M20 5v5h-5" /><path d="M19.3 10a7.5 7.5 0 1 0-2.2 5.3" /><text x="11.6" y="16.4" textAnchor="middle" fontSize="6.4" fontWeight="600" fill="currentColor" stroke="none">10</text></>,
   skipNext: <><path d="M6 5.5 15 12l-9 6.5z" /><path d="M18 5v14" /></>,
+  pip: <><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="12" y="12" width="7" height="6" rx="1" /></>,
+  lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
 };
 
 const filled: IconName[] = ['play', 'star', 'heart'];
