@@ -80,6 +80,7 @@ v1.5.0 起旧静态界面 `public/` 与 Tailwind 构建脚本已移除，前端�
 - Release 的 `latest.json` 包含 `darwin-aarch64`，Windows / Linux / macOS 都能收到应用内更新
 - 客户端开启 `requireSignedVersion`，拒绝签名版本与清单版本不一致的产物
 - 每个 Release 附带覆盖全部资产的 `SHA256SUMS`：`sha256sum -c SHA256SUMS`
+- 已实测完成一次旧版 → 新版的应用内更新（2026-10-28）
 
 ## 发现与源管理（v1.5.0）
 
