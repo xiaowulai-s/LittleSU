@@ -6,17 +6,20 @@ type LoaderCtor = new (config: unknown) => {
   load(context: LoaderContext, config: unknown, callbacks: LoaderCallbacks): void;
   abort?(): void;
   destroy?(): void;
+  stats?: HlsLoadStats | null;
 };
 
-export interface LoaderStats {
+/** 必须与 hls.js 内部 LoadStats 结构一致：onSuccess 之后 hls 会写 parsing / buffering 等字段。 */
+export interface HlsLoadStats {
   aborted: boolean;
   loaded: number;
   total: number;
   retry: number;
-  trequest: number;
-  tfirst: number;
-  tload: number;
-  retryDelay: number;
+  chunkCount: number;
+  bwEstimate: number;
+  loading: { start: number; first: number; end: number };
+  parsing: { start: number; end: number };
+  buffering: { start: number; first: number; end: number };
 }
 
 export interface LoaderContext {
@@ -27,14 +30,32 @@ export interface LoaderContext {
 }
 
 export interface LoaderCallbacks {
-  onSuccess: (response: { url: string; data: string | ArrayBuffer }, stats: LoaderStats, context: LoaderContext, networkDetails: unknown) => void;
-  onError: (data: { code: number; text: string }, context: LoaderContext, networkDetails: unknown, stats: LoaderStats) => void;
+  onSuccess: (response: { url: string; data: string | ArrayBuffer }, stats: HlsLoadStats, context: LoaderContext, networkDetails: unknown) => void;
+  onError: (data: { code: number; text: string }, context: LoaderContext, networkDetails: unknown, stats: HlsLoadStats) => void;
 }
 
 function isPlaylistContext(context: LoaderContext): boolean {
   return !context.frag && !context.keyInfo
     && (context.type === 'manifest' || context.type === 'level'
-      || context.type === 'audioTrack' || context.type === 'subtitleTrack');
+      || context.type === 'audioTrack' || context.type === 'subtitleTrack'
+      || context.type === 'steering-manifest');
+}
+
+function resetStats(stats: HlsLoadStats): void {
+  stats.aborted = false;
+  stats.loaded = 0;
+  stats.total = 0;
+  stats.retry = 0;
+  stats.chunkCount = 0;
+  stats.bwEstimate = 0;
+  stats.loading.start = performance.now();
+  stats.loading.first = 0;
+  stats.loading.end = 0;
+  stats.parsing.start = 0;
+  stats.parsing.end = 0;
+  stats.buffering.start = 0;
+  stats.buffering.first = 0;
+  stats.buffering.end = 0;
 }
 
 /** 用 Tauri 原生取流替换 hls.js 默认 XHR loader，绕过 WebView CORS。 */
@@ -44,29 +65,10 @@ export function createNativeHlsLoader(filterAds = false): LoaderCtor | null {
   if (!Base) return null;
 
   return class NativeHlsLoader extends Base {
-    private nativeStats: LoaderStats = {
-      aborted: false,
-      loaded: 0,
-      total: 0,
-      retry: 0,
-      trequest: 0,
-      tfirst: 0,
-      tload: 0,
-      retryDelay: 0,
-    };
-
     load(context: LoaderContext, _config: unknown, callbacks: LoaderCallbacks) {
-      const stats: LoaderStats = {
-        aborted: false,
-        loaded: 0,
-        total: 0,
-        retry: 0,
-        trequest: performance.now(),
-        tfirst: 0,
-        tload: 0,
-        retryDelay: 0,
-      };
-      this.nativeStats = stats;
+      const stats = this.stats;
+      if (!stats) return;
+      resetStats(stats);
       const playlist = isPlaylistContext(context);
 
       const done = (data: string | ArrayBuffer) => {
@@ -74,14 +76,16 @@ export function createNativeHlsLoader(filterAds = false): LoaderCtor | null {
         const payload = filterAds && playlist && typeof data === 'string'
           ? filterAdsFromM3U8(data)
           : data;
-        stats.tfirst = performance.now();
-        stats.tload = performance.now();
+        const now = performance.now();
+        stats.loading.first = now;
+        stats.loading.end = now;
         stats.loaded = typeof payload === 'string' ? payload.length : payload.byteLength;
         stats.total = stats.loaded;
         callbacks.onSuccess({ url: context.url, data: payload }, stats, context, null);
       };
       const fail = (error: unknown) => {
         if (stats.aborted) return;
+        stats.loading.end = performance.now();
         const text = error instanceof Error ? error.message : String(error);
         callbacks.onError({ code: 0, text }, context, null, stats);
       };
@@ -94,11 +98,11 @@ export function createNativeHlsLoader(filterAds = false): LoaderCtor | null {
     }
 
     abort() {
-      this.nativeStats.aborted = true;
+      if (this.stats) this.stats.aborted = true;
     }
 
     destroy() {
-      this.nativeStats.aborted = true;
+      if (this.stats) this.stats.aborted = true;
     }
   };
 }
