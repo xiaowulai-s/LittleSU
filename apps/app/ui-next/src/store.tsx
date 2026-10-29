@@ -7,12 +7,15 @@ import {
   SOURCES,
   customDefs,
   defaultSelectedKeys,
+  enabledCustomDefs,
   loadCustomApis,
   loadSelectedKeys,
   saveCustomApis,
   saveSelectedKeys,
 } from './lib/sources';
 import type { CustomApi, SourceDef } from './lib/sources';
+import { loadCustomLiveSources, saveCustomLiveSources } from './lib/liveSources';
+import type { CustomLiveSource } from './lib/liveSources';
 import {
   KEYS,
   loadFavorites,
@@ -63,6 +66,8 @@ interface AppState {
   setRecommendedSources: () => void;
   customApis: CustomApi[];
   setCustomApis: (apis: CustomApi[]) => void;
+  customLiveSources: CustomLiveSource[];
+  setCustomLiveSources: (list: CustomLiveSource[]) => void;
   activeSources: SourceDef[];
   settings: PlaybackSettings;
   updateSettings: (patch: Partial<PlaybackSettings>) => void;
@@ -78,6 +83,7 @@ interface AppState {
   health: Record<string, SourceHealth>;
   checkingSources: boolean;
   checkSources: () => Promise<void>;
+  testOneSource: (source: SourceDef) => Promise<SourceHealth | null>;
   toast: (message: string, tone?: ToastTone) => void;
   toasts: ToastItem[];
 }
@@ -121,6 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<HistoryRecord[]>(() => loadHistory());
   const [sourceState, setSourceState] = useState<Record<string, boolean>>(initialSourceState);
   const [customApis, setCustomApisState] = useState<CustomApi[]>(() => loadCustomApis());
+  const [customLiveSources, setCustomLiveSourcesState] = useState<CustomLiveSource[]>(() => loadCustomLiveSources());
   const [settings, setSettings] = useState<PlaybackSettings>(() => loadSettings());
   const [drawerId, setDrawerId] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -197,7 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const activeSources = useMemo<SourceDef[]>(() => {
     const builtIn = SOURCES.filter((source) => sourceState[source.key]);
-    return [...builtIn, ...customDefs(customApis)];
+    return [...builtIn, ...enabledCustomDefs(customApis)];
   }, [sourceState, customApis]);
 
   const toggleSource = useCallback((key: string) => {
@@ -216,6 +223,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setCustomApis = useCallback((next: CustomApi[]) => {
     setCustomApisState(next);
     saveCustomApis(next);
+  }, []);
+
+  const setCustomLiveSources = useCallback((next: CustomLiveSource[]) => {
+    setCustomLiveSourcesState(next);
+    saveCustomLiveSources(next);
   }, []);
 
   const updateSettings = useCallback((patch: Partial<PlaybackSettings>) => {
@@ -242,7 +254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (/android/i.test(navigator.userAgent)) {
-      await openExternal(updateInfo?.url || 'https://github.com/xiaowulai-s/LittleSU/releases/latest');
+      await openExternal(updateInfo?.androidUrl || updateInfo?.url || 'https://github.com/xiaowulai-s/LittleSU/releases/latest');
       return;
     }
     if (updateInstalling) return;
@@ -289,7 +301,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (checkingSources) return;
     const targets = [
       ...SOURCES.filter((source) => sourceState[source.key] || source.status === 'ok'),
-      ...customDefs(customApis),
+      ...enabledCustomDefs(customApis),
     ];
     if (!targets.length) {
       toast('没有可测活的源', 'warning');
@@ -328,6 +340,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, [checkingSources, health, sourceState, customApis, toast]);
 
+  const testOneSource = useCallback(async (source: SourceDef) => {
+    if (!isTauri()) {
+      toast('源测活需要在客户端内运行', 'warning');
+      return null;
+    }
+    const result = await testSource(source);
+    setHealth((prev) => {
+      const next = { ...prev, [source.key]: result };
+      writeJson(KEYS.health, next);
+      return next;
+    });
+    return result;
+  }, [toast]);
+
   const openTitle = useCallback(
     (key: string) => {
       const title = getTitle(key);
@@ -359,6 +385,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRecommendedSources,
       customApis,
       setCustomApis,
+      customLiveSources,
+      setCustomLiveSources,
       activeSources,
       settings,
       updateSettings,
@@ -374,6 +402,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       health,
       checkingSources,
       checkSources,
+      testOneSource,
       toast,
       toasts,
     }),
@@ -394,6 +423,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRecommendedSources,
       customApis,
       setCustomApis,
+      customLiveSources,
+      setCustomLiveSources,
       activeSources,
       settings,
       updateSettings,
@@ -409,6 +440,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       health,
       checkingSources,
       checkSources,
+      testOneSource,
       toast,
       toasts,
     ],

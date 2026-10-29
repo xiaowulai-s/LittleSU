@@ -37,9 +37,9 @@ export const SOURCES: SourceDef[] = [
   { key: 'hongniu', name: '红牛资源', host: 'hongniuzy2.com', base: 'https://www.hongniuzy2.com', status: 'backup', latency: 860, note: '详情接口异常' },
   { key: 'subocj', name: '速播资源', host: 'subocj.com', base: 'https://subocj.com', status: 'backup', latency: -1, note: '当前超时' },
   { key: 'modu', name: '魔都资源', host: 'caiji.moduapi.cc', base: 'https://caiji.moduapi.cc', status: 'backup', latency: -1, note: '当前超时' },
-  { key: 'heimuer', name: '黑木耳', host: 'json.heimuer.xyz', base: 'https://json.heimuer.xyz', status: 'experimental', latency: -1, note: '接口返回网页' },
-  { key: 'wolong', name: '卧龙资源', host: 'wolongzyw.com', base: 'https://wolongzyw.com', status: 'experimental', latency: -1, note: '接口返回网页' },
-  { key: 'hwba', name: '华为吧', host: 'cjhwba.com', base: 'https://cjhwba.com', status: 'experimental', latency: -1, note: '接口返回网页' },
+  { key: 'heimuer', name: '黑木耳', host: 'json.heimuer.xyz', base: 'https://json.heimuer.xyz', status: 'experimental', latency: -1, note: 'Cloudflare 拦截 / 超时' },
+  { key: 'wolong', name: '卧龙资源', host: 'wolongzyw.com', base: 'https://wolongzyw.com', status: 'experimental', latency: -1, note: '搜索接口返回站点首页' },
+  { key: 'hwba', name: '华为吧', host: 'cjhwba.com', base: 'https://cjhwba.com', status: 'experimental', latency: -1, note: '搜索接口 302 空响应' },
 ];
 
 export interface CustomApi {
@@ -47,6 +47,7 @@ export interface CustomApi {
   url: string;
   detail?: string;
   isAdult?: boolean;
+  enabled?: boolean;
 }
 
 export function defaultSelectedKeys(): string[] {
@@ -66,6 +67,7 @@ export function loadCustomApis(): CustomApi[] {
         url: String(item.url).replace(/\/+$/, ''),
         detail: typeof item.detail === 'string' ? item.detail : '',
         isAdult: item.isAdult === true,
+        enabled: item.enabled !== false,
       }));
   } catch {
     return [];
@@ -84,9 +86,17 @@ export function customDefs(customs: CustomApi[]): SourceDef[] {
   }));
 }
 
-/** 参与批量搜索的源：内置里排除返回网页的 HTML 占位源，再并入自定义源。 */
+/** 参与批量搜索的源：内置里排除返回网页的 HTML 占位源，再并入已启用的自定义源。 */
 export function searchableSources(customs: CustomApi[] = []): SourceDef[] {
-  return [...SOURCES.filter((source) => source.status !== 'experimental'), ...customDefs(customs)];
+  return [
+    ...SOURCES.filter((source) => source.status !== 'experimental'),
+    ...enabledCustomDefs(customs),
+  ];
+}
+
+/** 已启用的自定义源定义；保留原始下标作为 key，避免停用前面的源后 key 漂移。 */
+export function enabledCustomDefs(customs: CustomApi[]): SourceDef[] {
+  return customDefs(customs).filter((_, index) => customs[index]?.enabled !== false);
 }
 
 export function loadSelectedKeys(): string[] {

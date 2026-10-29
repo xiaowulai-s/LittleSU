@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SOURCES, isSourceHealthy, searchableSources } from './sources';
-import type { SourceDef } from './sources';
+import { SOURCES, isSourceHealthy, searchableSources } from './sources';import type { SourceDef } from './sources';
 
 const base: SourceDef = { key: 'demo', name: 'Demo', host: 'demo.test', base: 'https://demo.test', status: 'ok', latency: 0 };
 
@@ -27,5 +26,14 @@ describe('searchableSources', () => {
     expect(list).toHaveLength(SOURCES.length - experimentalCount + 1);
     expect(list.some((source) => source.status === 'experimental')).toBe(false);
     expect(list.at(-1)?.custom).toBe(true);
+  });
+
+  it('停用的自定义源不参与批量搜索', () => {
+    const list = searchableSources([
+      { name: '启用', url: 'https://on.test', enabled: true },
+      { name: '停用', url: 'https://off.test', enabled: false },
+    ]);
+    expect(list.some((source) => source.name === '启用')).toBe(true);
+    expect(list.some((source) => source.name === '停用')).toBe(false);
   });
 });

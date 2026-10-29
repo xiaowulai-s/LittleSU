@@ -26,12 +26,18 @@ const fallbackChannels: LiveChannel[] = mockChannelData.map((channel) => ({
 }));
 
 export default function Live() {
-  const { toast, device } = useApp();
+  const { toast, device, customLiveSources, settings } = useApp();
   const [sourceIndex, setSourceIndex] = useState(0);
   const [group, setGroup] = useState('全部');
   const [query, setQuery] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
-  const source = liveSources[sourceIndex];
+  const sources = useMemo(() => [
+    ...liveSources,
+    ...customLiveSources
+      .filter((item) => item.enabled !== false)
+      .map((item, index) => ({ key: `custom-live-${index}`, name: item.name, count: 0, epg: '', url: item.url })),
+  ], [customLiveSources]);
+  const source = sources[sourceIndex] || sources[0];
   const { loading, channels: loaded, error } = useLivePlaylist(source.url, reloadKey);
   const list = loaded.length ? loaded : fallbackChannels;
   const [selectedId, setSelectedId] = useState<string>('');
@@ -42,6 +48,8 @@ export default function Live() {
   const [cssFullscreen, setCssFullscreen] = useState(false);
   const [favorites, setFavorites] = useState<LiveFavorite[]>(loadLiveFavorites);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
   const [portrait, setPortrait] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(orientation: portrait)').matches : false,
   );
@@ -149,6 +157,13 @@ export default function Live() {
   }, [selected?.id, selected?.name, selected?.group, selected?.logo, source.name]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = muted;
+    video.volume = settings.volume;
+  }, [muted, settings.volume, selected?.id]);
+
+  useEffect(() => {
     setMediaPlaybackState(playing ? 'playing' : 'paused');
   }, [playing]);
 
@@ -172,7 +187,7 @@ export default function Live() {
     setGroup('全部');
     setQuery('');
     setShowFavorites(false);
-    toast(`已切换到 ${liveSources[index].name}`, 'success');
+    toast(`已切换到 ${sources[index].name}`, 'success');
   };
 
   const toggleFavoriteChannel = () => {
@@ -209,7 +224,7 @@ export default function Live() {
     <div className={`live-page ${cssFullscreen ? 'is-css-fullscreen' : ''} ${rotateLandscape ? 'is-landscape-rotate' : ''}`}>
       <div className="live-head">
         <div>
-          <div className="page-kicker"><i className="live-dot" />LIVE · 5 个内置直播源</div>
+          <div className="page-kicker"><i className="live-dot" />LIVE · {sources.length} 个直播源</div>
           <h1>直播</h1>
           <p>频道分组、搜索与 HLS 播放，取流走 Tauri 原生通道。</p>
         </div>
@@ -221,7 +236,7 @@ export default function Live() {
       </div>
 
       <div className="live-source-tabs">
-        {liveSources.map((item, index) => (
+        {sources.map((item, index) => (
           <button
             type="button"
             key={item.key}
@@ -278,7 +293,23 @@ export default function Live() {
               <div className="live-wave">
                 {Array.from({ length: 26 }, (_, index) => <i key={index} style={{ height: `${8 + ((index * 7) % 22)}px` }} />)}
               </div>
-              <button type="button" onClick={() => toast('音量控制将在实现阶段接入')} aria-label="音量"><Icon name="volume" size={18} /></button>
+              <button type="button" onClick={() => setMuted((value) => !value)} aria-label={muted ? '取消静音' : '静音'}><Icon name="volume" size={18} /></button>
+              {castSupported && (
+                <button
+                  type="button"
+                  aria-label="投屏"
+                  onClick={async () => {
+                    const video = videoRef.current as (HTMLVideoElement & { remote?: { prompt: () => Promise<void> } }) | null;
+                    try {
+                      await video?.remote?.prompt();
+                    } catch {
+                      toast('未找到可投屏设备', 'warning');
+                    }
+                  }}
+                >
+                  <Icon name="wifi" size={18} />
+                </button>
+              )}
               <button type="button" onClick={toggleFullscreen} aria-label={cssFullscreen ? '退出全屏' : '全屏'}><Icon name="fullscreen" size={18} /></button>
             </div>
           </div>

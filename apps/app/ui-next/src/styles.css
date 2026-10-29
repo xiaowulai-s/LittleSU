@@ -3037,3 +3037,29 @@ h1, h2, h3, p { margin: 0; }
 }
 .live-fav.is-on { color: #fb7185; border-color: rgba(251, 113, 133, .35); background: rgba(251, 113, 133, .1); }
 .live-fav.is-on svg { fill: currentColor; stroke: none; }
+
+.source-row-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.source-row-actions .icon-btn { color: var(--muted); }
+
+.player-sheet-inline { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.player-sheet-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .04);
+  color: #c7d0de;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+/* ---------- 界面密度 ---------- */
+
+[data-density="compact"] .result-grid { grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 14px 10px; }
+[data-density="compact"] .rail-item { flex-basis: 136px; }
+[data-density="compact"] .poster-title { font-size: 11px; }
+[data-density="wide"] .result-grid { grid-template-columns: repeat(auto-fill, minmax(182px, 1fr)); }
+[data-density="wide"] .rail-item { flex-basis: 188px; }

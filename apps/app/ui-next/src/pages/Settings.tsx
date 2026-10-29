@@ -56,6 +56,31 @@ function statusLabelOf(source: SourceDef) {
   return source.status === 'ok' ? '可用' : source.status === 'backup' ? '备用' : 'HTML 实验';
 }
 
+function TestSourceButton({ source }: { source: SourceDef }) {
+  const { testOneSource, toast } = useApp();
+  const [testing, setTesting] = useState(false);
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      disabled={testing}
+      aria-label={`测活 ${source.name}`}
+      onClick={async () => {
+        setTesting(true);
+        const result = await testOneSource(source);
+        setTesting(false);
+        if (!result) return;
+        toast(
+          result.status === 'ok' ? `${source.name} 可用 · ${result.latency}ms` : `${source.name} 测活失败`,
+          result.status === 'ok' ? 'success' : 'warning',
+        );
+      }}
+    >
+      <Icon name="refresh" size={15} />
+    </button>
+  );
+}
+
 function SourceRow({ source }: { source: SourceDef }) {
   const { sourceState, toggleSource, health, checkingSources } = useApp();
   const enabled = source.custom ? true : !!sourceState[source.key];
@@ -81,12 +106,15 @@ function SourceRow({ source }: { source: SourceDef }) {
           <span>{latencyText}</span>
         </div>
       </div>
-      <Switch
-        checked={enabled}
-        disabled={source.custom}
-        onChange={() => { if (!source.custom) toggleSource(source.key); }}
-        label={source.name}
-      />
+      <div className="source-row-actions">
+        <TestSourceButton source={source} />
+        <Switch
+          checked={enabled}
+          disabled={source.custom}
+          onChange={() => { if (!source.custom) toggleSource(source.key); }}
+          label={source.name}
+        />
+      </div>
     </div>
   );
 }
@@ -108,6 +136,8 @@ export default function Settings() {
     updateSettings,
     customApis,
     setCustomApis,
+    customLiveSources,
+    setCustomLiveSources,
     clearHistory,
     history,
     updateInfo,
@@ -128,6 +158,9 @@ export default function Settings() {
   const [editingCustom, setEditingCustom] = useState<number | 'new' | null>(null);
   const [customName, setCustomName] = useState('');
   const [customUrl, setCustomUrl] = useState('');
+  const [editingLive, setEditingLive] = useState<number | 'new' | null>(null);
+  const [liveName, setLiveName] = useState('');
+  const [liveUrl, setLiveUrl] = useState('');
 
   useEffect(() => {
     if (requested && ['appearance', 'playback', 'sources', 'data', 'about'].includes(requested)) {
@@ -138,7 +171,8 @@ export default function Settings() {
 
   const customs = customDefs(customApis);
   const total = SOURCES.length + customs.length;
-  const enabledCount = SOURCES.filter((source) => sourceState[source.key]).length + customs.length;
+  const enabledCustomCount = customApis.filter((api) => api.enabled !== false).length;
+  const enabledCount = SOURCES.filter((source) => sourceState[source.key]).length + enabledCustomCount;
 
   const exportConfig = async () => {
     try {
@@ -238,6 +272,60 @@ export default function Settings() {
     setCustomApis(customApis.filter((_, itemIndex) => itemIndex !== index));
     if (editingCustom === index) cancelCustom();
     toast(`已删除 ${api.name}`, 'success');
+  };
+
+  const startAddLive = () => {
+    setEditingLive('new');
+    setLiveName('');
+    setLiveUrl('');
+  };
+
+  const startEditLive = (index: number) => {
+    setEditingLive(index);
+    setLiveName(customLiveSources[index]?.name ?? '');
+    setLiveUrl(customLiveSources[index]?.url ?? '');
+  };
+
+  const cancelLive = () => {
+    setEditingLive(null);
+    setLiveName('');
+    setLiveUrl('');
+  };
+
+  const submitLive = (event: FormEvent) => {
+    event.preventDefault();
+    const url = liveUrl.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\//i.test(url)) {
+      toast('直播源地址需以 http:// 或 https:// 开头', 'warning');
+      return;
+    }
+    let name = liveName.trim();
+    if (!name) {
+      try {
+        name = new URL(url).hostname;
+      } catch {
+        name = url;
+      }
+    }
+    const duplicated = customLiveSources.some((item, index) => item.url.replace(/\/+$/, '') === url && index !== editingLive);
+    if (duplicated) {
+      toast('该直播源已存在', 'warning');
+      return;
+    }
+    const next = [...customLiveSources];
+    if (editingLive === 'new') next.push({ name, url, enabled: true });
+    else if (typeof editingLive === 'number') next[editingLive] = { ...next[editingLive], name, url };
+    setCustomLiveSources(next);
+    toast(editingLive === 'new' ? `已添加直播源 ${name}` : `已更新 ${name}`, 'success');
+    cancelLive();
+  };
+
+  const removeLive = (index: number) => {
+    const item = customLiveSources[index];
+    if (!item) return;
+    setCustomLiveSources(customLiveSources.filter((_, itemIndex) => itemIndex !== index));
+    if (editingLive === index) cancelLive();
+    toast(`已删除 ${item.name}`, 'success');
   };
 
   return (
@@ -375,16 +463,27 @@ export default function Settings() {
               <SettingCard title="自定义源" description="苹果 CMS 兼容接口，保存后立即参与搜索与详情。">
                 <div className="source-list">
                   {customApis.map((api, index) => (
-                    <div className="source-row is-enabled" key={`${api.url}-${index}`}>
-                      <StatusDot status="ok" />
+                    <div className={`source-row ${api.enabled === false ? '' : 'is-enabled'}`} key={`${api.url}-${index}`}>
+                      <StatusDot status={api.enabled === false ? 'backup' : 'ok'} />
                       <div className="source-row-main">
                         <div className="source-row-title">
                           <strong>{api.name}</strong>
                           <span className="source-status source-status-ok">自定义</span>
+                          {api.enabled === false ? <span className="source-note">已停用</span> : null}
                         </div>
                         <div className="source-row-meta"><span>{api.url}</span></div>
                       </div>
                       <div className="custom-source-actions">
+                        <TestSourceButton source={{ ...customDefs([api])[0], key: `custom_${index}` }} />
+                        <Switch
+                          checked={api.enabled !== false}
+                          onChange={() => {
+                            const next = [...customApis];
+                            next[index] = { ...next[index], enabled: api.enabled === false };
+                            setCustomApis(next);
+                          }}
+                          label={api.name}
+                        />
                         <button type="button" className="icon-btn" onClick={() => startEditCustom(index)} aria-label={`编辑 ${api.name}`}>
                           <Icon name="edit" size={16} />
                         </button>
@@ -421,6 +520,68 @@ export default function Settings() {
                   </form>
                 ) : (
                   <Button size="sm" variant="secondary" icon="plus" onClick={startAddCustom}>新增自定义源</Button>
+                )}
+              </SettingCard>
+
+              <SettingCard title="自定义直播源" description="M3U / TXT 订阅，保存后出现在直播页；启用开关即时生效。">
+                <div className="source-list">
+                  {customLiveSources.map((item, index) => (
+                    <div className={`source-row ${item.enabled === false ? '' : 'is-enabled'}`} key={`${item.url}-${index}`}>
+                      <StatusDot status={item.enabled === false ? 'backup' : 'ok'} />
+                      <div className="source-row-main">
+                        <div className="source-row-title">
+                          <strong>{item.name}</strong>
+                          <span className="source-status source-status-ok">直播</span>
+                          {item.enabled === false ? <span className="source-note">已停用</span> : null}
+                        </div>
+                        <div className="source-row-meta"><span>{item.url}</span></div>
+                      </div>
+                      <div className="custom-source-actions">
+                        <Switch
+                          checked={item.enabled !== false}
+                          onChange={() => {
+                            const next = [...customLiveSources];
+                            next[index] = { ...next[index], enabled: item.enabled === false };
+                            setCustomLiveSources(next);
+                          }}
+                          label={item.name}
+                        />
+                        <button type="button" className="icon-btn" onClick={() => startEditLive(index)} aria-label={`编辑 ${item.name}`}>
+                          <Icon name="edit" size={16} />
+                        </button>
+                        <button type="button" className="icon-btn" onClick={() => removeLive(index)} aria-label={`删除 ${item.name}`}>
+                          <Icon name="trash" size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {!customLiveSources.length && editingLive === null && (
+                    <p className="setting-hint">还没有自定义直播源，添加 M3U / TXT 订阅即可在直播页切换。</p>
+                  )}
+                </div>
+                {editingLive !== null ? (
+                  <form className="custom-source-form" onSubmit={submitLive}>
+                    <input
+                      value={liveName}
+                      onChange={(event) => setLiveName(event.target.value)}
+                      placeholder="名称（留空自动取域名）"
+                      aria-label="直播源名称"
+                    />
+                    <input
+                      value={liveUrl}
+                      onChange={(event) => setLiveUrl(event.target.value)}
+                      placeholder="https://example.com/live.m3u"
+                      aria-label="直播源订阅地址"
+                    />
+                    <div className="custom-source-form-actions">
+                      <Button size="sm" variant="ghost" onClick={cancelLive}>取消</Button>
+                      <Button size="sm" variant="primary" type="submit" icon="check">
+                        {editingLive === 'new' ? '添加' : '保存'}
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <Button size="sm" variant="secondary" icon="plus" onClick={startAddLive}>新增直播源</Button>
                 )}
               </SettingCard>
 
@@ -522,7 +683,7 @@ export default function Settings() {
                       variant="primary"
                       disabled={updateInstalling}
                       onClick={() => {
-                        if (ANDROID) void openExternal(updateInfo.url);
+                        if (ANDROID) void openExternal(updateInfo.androidUrl || updateInfo.url);
                         else void installUpdate();
                       }}
                     >

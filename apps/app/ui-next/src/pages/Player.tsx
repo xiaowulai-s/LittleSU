@@ -13,6 +13,7 @@ import { pickQualityLevel, qualityLabel } from '../lib/quality';
 import { useWakeLock } from '../lib/wakeLock';
 import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
 import { CLIENT_RELEASE_URL, shareContent } from '../lib/share';
+import { normalizeSubtitle } from '../lib/subtitles';
 import { httpText, isTauri } from '../lib/env';
 import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
@@ -100,10 +101,15 @@ export default function Player() {
   const [subtitleTracks, setSubtitleTracks] = useState<{ id: number; label: string }[]>([]);
   const [audioTracks, setAudioTracks] = useState<{ id: number; label: string }[]>([]);
   const [subtitleId, setSubtitleId] = useState(-1);
+  const [localSubtitle, setLocalSubtitle] = useState<{ name: string; vtt: string } | null>(null);
   const [audioId, setAudioId] = useState(0);
   const [pipSupported, setPipSupported] = useState(false);
+  const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const subtitleInputRef = useRef<HTMLInputElement>(null);
+  const subtitleTrackRef = useRef<HTMLTrackElement | null>(null);
+  const subtitleUrlRef = useRef<string | null>(null);
   const hudTimer = useRef<number | null>(null);
   const gestureRef = useRef<{ kind: 'brightness' | 'volume'; startY: number; startValue: number } | null>(null);
   const triedNextRef = useRef<(reason: string) => boolean>(() => false);
@@ -400,6 +406,36 @@ export default function Player() {
     return () => video.removeEventListener('loadedmetadata', sync);
   }, [streamUrl]);
 
+  /* 本地 SRT/VTT 字幕：转成 WebVTT 后挂到 video 上 */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !localSubtitle) return;
+    const url = URL.createObjectURL(new Blob([localSubtitle.vtt], { type: 'text/vtt' }));
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.label = localSubtitle.name;
+    track.srclang = 'zh';
+    track.default = true;
+    track.src = url;
+    video.appendChild(track);
+    subtitleTrackRef.current = track;
+    subtitleUrlRef.current = url;
+    const enable = () => {
+      Array.from(video.textTracks).forEach((item) => {
+        item.mode = item.label === localSubtitle.name ? 'showing' : 'disabled';
+      });
+    };
+    track.addEventListener('load', enable);
+    enable();
+    return () => {
+      track.removeEventListener('load', enable);
+      track.remove();
+      URL.revokeObjectURL(url);
+      if (subtitleTrackRef.current === track) subtitleTrackRef.current = null;
+      if (subtitleUrlRef.current === url) subtitleUrlRef.current = null;
+    };
+  }, [localSubtitle, streamUrl]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !streamUrl || !settings.remember) return;
@@ -499,9 +535,19 @@ export default function Player() {
     return () => window.removeEventListener('lsu:back', onBack);
   }, [cssFullscreen, locked, device]);
 
+  const flashHud = (kind: 'brightness' | 'volume', value: number) => {
+    setGestureHud({ kind, value });
+    if (hudTimer.current) window.clearTimeout(hudTimer.current);
+    hudTimer.current = window.setTimeout(() => setGestureHud(null), 700);
+  };
+
   /* ---------- 键盘快捷键 ---------- */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) {
+        return;
+      }
       if (event.code === 'Space') {
         event.preventDefault();
         const video = videoRef.current;
@@ -522,6 +568,15 @@ export default function Player() {
         if (!isMock && video) video.currentTime = Math.max(0, video.currentTime - 10);
         else setProgress((value) => Math.max(0, value - 5));
       }
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowUp' ? 0.1 : -0.1;
+        const value = Math.max(0, Math.min(1, Math.round((settings.volume + delta) * 10) / 10));
+        updateSettings({ volume: value });
+        setMuted(value === 0);
+        flashHud('volume', value);
+      }
+      if (event.key.toLowerCase() === 'm') setMuted((value) => !value);
       if (event.key.toLowerCase() === 'f') fullscreenRef.current();
       if (event.key === 'Escape') {
         if (locked) setLocked(false);
@@ -530,7 +585,7 @@ export default function Player() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isMock, fullscreen, locked]);
+  }, [isMock, fullscreen, locked, settings.volume, updateSettings]);
 
   if (!title) {
     return (
@@ -568,6 +623,7 @@ export default function Player() {
   };
 
   const selectSubtitle = (id: number) => {
+    if (subtitleTrackRef.current) subtitleTrackRef.current.track.mode = 'disabled';
     const hls = hlsRef.current;
     if (hls) {
       hls.subtitleTrack = id;
@@ -581,6 +637,43 @@ export default function Player() {
       }
     }
     setSubtitleId(id);
+  };
+
+  const selectLocalSubtitle = () => {
+    if (!localSubtitle) return;
+    const hls = hlsRef.current;
+    if (hls) {
+      hls.subtitleTrack = -1;
+      hls.subtitleDisplay = false;
+    }
+    const video = videoRef.current;
+    if (video) {
+      Array.from(video.textTracks).forEach((track) => {
+        track.mode = track.label === localSubtitle.name ? 'showing' : 'disabled';
+      });
+    }
+    setSubtitleId(-2);
+  };
+
+  const handleSubtitleFile = async (file: File) => {
+    try {
+      const vtt = normalizeSubtitle(await file.text());
+      if (!vtt.replace(/^WEBVTT\s*/i, '').trim()) {
+        toast('字幕内容为空', 'warning');
+        return;
+      }
+      setLocalSubtitle({ name: file.name.replace(/\.[^.]+$/, ''), vtt });
+      setSubtitleId(-2);
+      toast(`已加载字幕 ${file.name}`, 'success');
+    } catch {
+      toast('字幕读取失败', 'warning');
+    }
+  };
+
+  const removeLocalSubtitle = () => {
+    setLocalSubtitle(null);
+    setSubtitleId(-1);
+    toast('已移除本地字幕', 'success');
   };
 
   const selectAudio = (id: number) => {
@@ -597,12 +690,6 @@ export default function Player() {
     } catch {
       toast('当前环境不支持画中画', 'warning');
     }
-  };
-
-  const flashHud = (kind: 'brightness' | 'volume', value: number) => {
-    setGestureHud({ kind, value });
-    if (hudTimer.current) window.clearTimeout(hudTimer.current);
-    hudTimer.current = window.setTimeout(() => setGestureHud(null), 700);
   };
 
   const onSurfaceTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
@@ -1033,14 +1120,29 @@ export default function Player() {
                     <div className="player-sheet-section">
                       <span className="player-sheet-label">字幕</span>
                       <div className="player-sheet-chips">
-                        <Chip active={subtitleId < 0} onClick={() => selectSubtitle(-1)}>关闭</Chip>
+                        <Chip active={subtitleId === -1} onClick={() => selectSubtitle(-1)}>关闭</Chip>
+                        {localSubtitle && (
+                          <Chip active={subtitleId === -2} onClick={selectLocalSubtitle}>{localSubtitle.name}</Chip>
+                        )}
                         {subtitleTracks.map((track) => (
                           <Chip key={track.id} active={subtitleId === track.id} onClick={() => selectSubtitle(track.id)}>
                             {track.label}
                           </Chip>
                         ))}
                       </div>
-                      {!subtitleTracks.length && <small className="player-sheet-hint">当前源未提供字幕轨</small>}
+                      {!subtitleTracks.length && !localSubtitle && <small className="player-sheet-hint">当前源未提供字幕轨</small>}
+                      <div className="player-sheet-inline">
+                        <button type="button" className="player-sheet-mini" onClick={() => subtitleInputRef.current?.click()}>
+                          <Icon name="upload" size={13} />
+                          加载本地字幕
+                        </button>
+                        {localSubtitle && (
+                          <button type="button" className="player-sheet-mini" onClick={removeLocalSubtitle}>
+                            <Icon name="trash" size={13} />
+                            移除
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="player-sheet-section">
                       <span className="player-sheet-label">音轨</span>
@@ -1069,6 +1171,27 @@ export default function Player() {
                       </div>
                     </div>
                     <div className="player-sheet-actions">
+                      {castSupported && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const video = videoRef.current as (HTMLVideoElement & { remote?: { prompt: () => Promise<void> } }) | null;
+                            if (!video?.remote) {
+                              toast('当前环境不支持投屏', 'warning');
+                              return;
+                            }
+                            setSheetOpen(false);
+                            try {
+                              await video.remote.prompt();
+                            } catch {
+                              toast('未找到可投屏设备', 'warning');
+                            }
+                          }}
+                        >
+                          <Icon name="wifi" size={16} />
+                          投屏
+                        </button>
+                      )}
                       {pipSupported && (
                         <button type="button" onClick={() => { setSheetOpen(false); void togglePip(); }}>
                           <Icon name="pip" size={16} />
@@ -1084,11 +1207,23 @@ export default function Player() {
                     </div>
                     <p className="player-sheet-tip">
                       全屏时：左侧上下滑调亮度，右侧上下滑调音量；锁定后可避免误触。
+                      快捷键：空格 播放/暂停 · ←→ 快退/快进 · ↑↓ 音量 · M 静音 · F 全屏。
                     </p>
                   </div>
                 </div>
               </div>
             )}
+      <input
+        ref={subtitleInputRef}
+        type="file"
+        accept=".srt,.vtt,text/vtt"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void handleSubtitleFile(file);
+          event.target.value = '';
+        }}
+      />
     </div>
   );
 }

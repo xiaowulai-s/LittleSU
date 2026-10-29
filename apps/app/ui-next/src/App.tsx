@@ -57,7 +57,7 @@ function UpdatePrompt() {
           className="primary"
           disabled={updateInstalling}
           onClick={() => {
-            if (android) void openExternal(updateInfo.url);
+            if (android) void openExternal(updateInfo.androidUrl || updateInfo.url);
             else void installUpdate();
           }}
         >
@@ -119,7 +119,7 @@ function AndroidBackHandler() {
 }
 
 function Prototype() {
-  const { device, effectiveTheme, checkUpdate, toast } = useApp();
+  const { device, effectiveTheme, settings, checkUpdate, toast } = useApp();
   const location = useLocation();
   const isPlayer = location.pathname.startsWith('/player');
   const isAndroidImmersive = device === 'android'
@@ -144,7 +144,7 @@ function Prototype() {
 
   if (!preview) {
     return (
-      <div className={`prototype-root app-standalone device-${device}`} data-theme={effectiveTheme} data-device={device}>
+      <div className={`prototype-root app-standalone device-${device}`} data-theme={effectiveTheme} data-device={device} data-density={settings.density}>
         <AndroidBackHandler />
         {device === 'windows' ? (
           isPlayer ? <AppRoutes /> : (
@@ -163,7 +163,7 @@ function Prototype() {
   }
 
   return (
-    <div className="prototype-root" data-theme={effectiveTheme} data-device={device}>
+    <div className="prototype-root" data-theme={effectiveTheme} data-device={device} data-density={settings.density}>
       <AndroidBackHandler />
       <div className="prototype-stage">
         <div className="stage-meta">

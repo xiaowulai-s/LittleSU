@@ -6,6 +6,20 @@ export interface UpdateInfo {
   latest: string;
   hasUpdate: boolean;
   url: string;
+  androidUrl?: string;
+}
+
+interface ReleaseAsset {
+  name?: string;
+  browser_download_url?: string;
+}
+
+/** 优先选择通用 APK，其次任意 APK。 */
+export function pickAndroidAsset(assets: ReleaseAsset[] | undefined): string | undefined {
+  if (!Array.isArray(assets)) return undefined;
+  const apkAssets = assets.filter((asset) => /\.apk$/i.test(asset.name || '') && asset.browser_download_url);
+  const universal = apkAssets.find((asset) => /android-universal\.apk$/i.test(asset.name || ''));
+  return (universal || apkAssets[0])?.browser_download_url;
 }
 
 export function compareVersion(a: string, b: string): number {
@@ -33,6 +47,7 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
       latest,
       hasUpdate: compareVersion(latest, APP_VERSION) > 0,
       url: `https://github.com/xiaowulai-s/LittleSU/releases/tag/${tag || `v${latest}`}`,
+      androidUrl: pickAndroidAsset((json as { assets?: ReleaseAsset[] }).assets),
     };
   } catch {
     return null;
