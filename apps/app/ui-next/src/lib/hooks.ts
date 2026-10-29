@@ -5,9 +5,11 @@ import { useApp } from '../store';
 import { applyDetail, buildTitle, dedupeTitles, parseDetail, parseSearchPage } from './cms';
 import { mergeVariantCandidates } from './variants';
 import type { CmsItem } from './cms';
-import { httpJson, httpText, isTauri, rustSearch } from './env';
+import { httpJson, httpText, isTauri } from './env';
+import { fetchSourceSearch } from './sourceSearch';
+import type { SourceSearchOptions } from './sourceSearch';
 import { detailUrlFor, findSource, isSourceHealthy, latestUrlFor, searchableSources } from './sources';
-import type { SourceDef } from './sources';
+import type { CustomApi, SourceDef } from './sources';
 import { parsePlaylist } from './liveParser';
 import type { LiveChannel } from './liveParser';
 import { fetchEpg } from './epg';
@@ -29,10 +31,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-async function searchOneSource(source: SourceDef, query: string, page = 1): Promise<{ titles: Title[]; pageCount?: number }> {
-  const raw = source.custom
-    ? await rustSearch('custom', query, source.base, page)
-    : await rustSearch(source.key, query, undefined, page);
+async function searchOneSource(
+  source: SourceDef,
+  query: string,
+  page = 1,
+  options?: SourceSearchOptions,
+): Promise<{ titles: Title[]; pageCount?: number }> {
+  const raw = await fetchSourceSearch(source, query, page, options);
   return parseSearchPage(raw, source, source.name);
 }
 
@@ -50,7 +55,7 @@ export interface SearchState {
 }
 
 export function useSearch(query: string, scope: SearchScope = 'recommended', limit?: number): SearchState {
-  const { activeSources, health, customApis } = useApp();
+  const { activeSources, health, customApis, settings } = useApp();
 
   const targets = useMemo<SourceDef[]>(() => {
     let list: SourceDef[];
@@ -78,6 +83,17 @@ export function useSearch(query: string, scope: SearchScope = 'recommended', lim
   const resultsRef = useRef<Title[]>([]);
   const failuresRef = useRef<{ name: string; reason: string }[]>([]);
   const busyRef = useRef(false);
+  const netRef = useRef({
+    timeoutSecs: settings.searchTimeoutSecs,
+    retries: settings.searchRetries,
+  });
+
+  useEffect(() => {
+    netRef.current = {
+      timeoutSecs: settings.searchTimeoutSecs,
+      retries: settings.searchRetries,
+    };
+  }, [settings.searchTimeoutSecs, settings.searchRetries]);
 
   const loadPage = useCallback(async (page: number, append: boolean) => {
     const text = textRef.current;
@@ -98,7 +114,7 @@ export function useSearch(query: string, scope: SearchScope = 'recommended', lim
         if (cursor >= sources.length || runId !== runRef.current) return;
         const source = sources[cursor];
         try {
-          const { titles, pageCount } = await withTimeout(searchOneSource(source, text, page), 12000);
+          const { titles, pageCount } = await searchOneSource(source, text, page, netRef.current);
           if (runId !== runRef.current) return;
           if (pageCount) maxPageCount = Math.max(maxPageCount, pageCount);
           if (!titles.length) continue;
@@ -190,6 +206,30 @@ async function fetchDetail(base: Title, source: SourceDef): Promise<Title | null
     /* HTML 兜底由调用方处理 */
   }
   return null;
+}
+
+/** 重新拉取详情，用于签名播放地址过期后换取新地址。 */
+export async function refreshTitleDetail(base: Title, customApis: CustomApi[]): Promise<Title | null> {
+  if (!base.sourceKey || !base.vodId) return null;
+  const source = findSource(base.sourceKey, customApis);
+  if (!source) return null;
+  const fresh = await fetchDetail(base, source).catch(() => null);
+  if (fresh?.episodesList?.length) return fresh;
+  try {
+    const html = await withTimeout(httpText(detailUrlFor(source, base.vodId as string)), 15000);
+    const episodes = parseHtmlEpisodes(html);
+    if (!episodes.length) return null;
+    return {
+      ...base,
+      episodesList: episodes,
+      playLines: undefined,
+      playLineIndex: undefined,
+      playUrl: episodes[0].url,
+      episodes: episodes.length,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export interface DetailState {

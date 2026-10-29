@@ -4,6 +4,7 @@ import type { FormEvent, ReactNode } from 'react';
 import { SOURCES, customDefs } from '../lib/sources';
 import type { SourceDef } from '../lib/sources';
 import { clearAppCaches } from '../lib/cache';
+import { SEARCH_RETRY_OPTIONS, SEARCH_TIMEOUT_OPTIONS } from '../lib/sourceSearch';
 import { KEYS } from '../lib/storage';
 import { APP_VERSION } from '../lib/version';
 import { openExternal } from '../lib/window';
@@ -453,6 +454,27 @@ export default function Settings() {
                   </Button>
                 </div>
               </div>
+
+              <SettingCard title="搜索请求" description="每个源执行搜索时的等待上限与失败重试次数，仅影响搜索结果。">
+                <SettingRow label="单源超时" description={`当前 ${settings.searchTimeoutSecs} 秒，超时后该源本次搜索失败`}>
+                  <div className="inline-select">
+                    {SEARCH_TIMEOUT_OPTIONS.map((sec) => (
+                      <Chip key={sec} active={settings.searchTimeoutSecs === sec} onClick={() => updateSettings({ searchTimeoutSecs: sec })}>
+                        {sec} 秒
+                      </Chip>
+                    ))}
+                  </div>
+                </SettingRow>
+                <SettingRow label="失败重试" description="超时或请求失败后额外尝试的次数">
+                  <div className="inline-select">
+                    {SEARCH_RETRY_OPTIONS.map((count) => (
+                      <Chip key={count} active={settings.searchRetries === count} onClick={() => updateSettings({ searchRetries: count })}>
+                        {count === 0 ? '不重试' : `${count} 次`}
+                      </Chip>
+                    ))}
+                  </div>
+                </SettingRow>
+              </SettingCard>
 
               <SettingCard title="推荐源" description="实测可用的 10 个源，默认全部启用。">
                 <div className="source-list">

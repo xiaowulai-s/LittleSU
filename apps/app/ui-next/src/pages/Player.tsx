@@ -6,7 +6,8 @@ import type { Episode, Title } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
 import { historyToTitle } from '../lib/adapters';
-import { useDetail } from '../lib/hooks';
+import { refreshTitleDetail, useDetail } from '../lib/hooks';
+import { isExpiredStreamError, selectRefreshedEpisode } from '../lib/playbackRefresh';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
 import { clampBrightness, clampVolume, gestureRatio } from '../lib/gesture';
 import { pickQualityLevel, qualityLabel } from '../lib/quality';
@@ -47,6 +48,7 @@ export default function Player() {
     recordHistory,
     settings,
     updateSettings,
+    customApis,
     device,
   } = useApp();
   const rawKey = id ? decodeURIComponent(id) : '';
@@ -134,6 +136,17 @@ export default function Player() {
   const isFavorite = favoriteKeys.has(rawKey);
   const key = rawKey;
   const rotateLandscape = device === 'android' && cssFullscreen && portrait;
+  const sourceUrlRef = useRef(sourceUrl);
+  sourceUrlRef.current = sourceUrl;
+  const freshAutoRef = useRef(false);
+  const refreshingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const refreshRef = useRef<(requireChange: boolean) => Promise<boolean>>(async () => false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia('(orientation: portrait)');
@@ -173,6 +186,11 @@ export default function Player() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawKey]);
 
+  /* 每条地址/线路/剧集只自动尝试一次刷新，避免签名地址持续失效时循环 */
+  useEffect(() => {
+    freshAutoRef.current = false;
+  }, [title?.key, lineIndex, episode]);
+
   /* ---------- 播放失败自动换源 ---------- */
   const tryNextVariant = useCallback((reason: string): boolean => {
     if (!title || !settings.autoSwitchSource) return false;
@@ -207,9 +225,47 @@ export default function Player() {
     return true;
   }, [title, uniqueVariants, settings.autoSwitchSource, toast]);
 
+  /**
+   * 重新拉取详情换取新的播放地址。签名 m3u8 过期时同一个 URL 永远失败，
+   * 重试必须先回源刷新；requireChange 为 false 时允许地址未变化也重载。
+   */
+  const refreshCurrentEpisode = useCallback(async (requireChange: boolean): Promise<boolean> => {
+    const base = title;
+    if (!isTauri() || !base?.sourceKey || !base.vodId || refreshingRef.current) return false;
+    const expectedUrl = sourceUrlRef.current;
+    refreshingRef.current = true;
+    try {
+      const fresh = await refreshTitleDetail(base, customApis);
+      if (!fresh || !mountedRef.current || sourceUrlRef.current !== expectedUrl) return false;
+      const picked = selectRefreshedEpisode(fresh, {
+        lineIndex,
+        lineName: base.playLines?.[lineIndex]?.name,
+        episodeIndex: episode - 1,
+        episodeName: current?.name,
+      });
+      if (!picked) return false;
+      if (requireChange && picked.url === expectedUrl) return false;
+      setActiveTitle({ ...fresh, playLineIndex: picked.lineIndex });
+      setLineIndex(picked.lineIndex);
+      setEpisode(picked.episodeIndex + 1);
+      setPlayableUrl('');
+      setVideoError(null);
+      setReloadKey((value) => value + 1);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, [title, customApis, lineIndex, episode, current]);
+
   useEffect(() => {
     triedNextRef.current = tryNextVariant;
   }, [tryNextVariant]);
+
+  useEffect(() => {
+    refreshRef.current = refreshCurrentEpisode;
+  }, [refreshCurrentEpisode]);
 
   /* ---------- 分享页 -> m3u8 解析 ---------- */
   useEffect(() => {
@@ -318,8 +374,24 @@ export default function Player() {
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data?.fatal) return;
-        const handled = triedNextRef.current(data.details || '播放失败');
-        if (!handled) setVideoError(data.details || '播放失败');
+        const reason = data.details || '播放失败';
+        const expectedUrl = sourceUrlRef.current;
+        const response = (data as { response?: { code?: number } }).response;
+        if (!freshAutoRef.current && isExpiredStreamError(reason, response?.code)) {
+          freshAutoRef.current = true;
+          void refreshRef.current(true).then((refreshed) => {
+            if (refreshed) {
+              toast('播放地址已刷新', 'success');
+              return;
+            }
+            if (sourceUrlRef.current !== expectedUrl) return;
+            const handled = triedNextRef.current(reason);
+            if (!handled) setVideoError(reason);
+          });
+          return;
+        }
+        const handled = triedNextRef.current(reason);
+        if (!handled) setVideoError(reason);
       });
       hlsRef.current = hls;
     } else {
@@ -809,9 +881,18 @@ export default function Player() {
     toast(`清晰度：${label}`, 'success');
   };
 
-  const retryPlayback = () => {
+  const retryPlayback = async () => {
     setVideoError(null);
     triedRef.current = new Set();
+    freshAutoRef.current = true;
+    const expectedUrl = sourceUrlRef.current;
+    toast('正在重新获取播放地址…');
+    const refreshed = await refreshRef.current(false);
+    if (refreshed) {
+      toast('播放地址已刷新', 'success');
+      return;
+    }
+    if (!mountedRef.current || sourceUrlRef.current !== expectedUrl) return;
     setReloadKey((value) => value + 1);
     toast('正在重新加载', 'success');
   };
@@ -867,6 +948,7 @@ export default function Player() {
               ref={videoRef}
               className={`video-el ${isMock ? 'is-hidden' : ''}`}
               playsInline
+              onError={() => { if (!hlsRef.current) setVideoError('视频加载失败'); }}
               style={{
                 objectFit: fitMode,
                 filter: brightness !== 1 ? `brightness(${brightness})` : undefined,

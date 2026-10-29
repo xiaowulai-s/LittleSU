@@ -45,6 +45,8 @@ export interface PlaybackSettings {
   speed: number;
   fitMode: 'contain' | 'cover';
   keepAwake: boolean;
+  searchTimeoutSecs: number;
+  searchRetries: number;
 }
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -136,6 +138,8 @@ export function loadSettings(): PlaybackSettings {
     speed: 1,
     fitMode: 'contain',
     keepAwake: true,
+    searchTimeoutSecs: 12,
+    searchRetries: 0,
   };
   return { ...defaults, ...readJson<Partial<PlaybackSettings>>(KEYS.settings, {}) };
 }

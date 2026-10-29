@@ -274,6 +274,7 @@ async fn search_videos(
     source_id: String,
     custom_api_url: Option<String>,
     page: Option<u32>,
+    timeout_secs: Option<u64>,
 ) -> Result<String, HttpError> {
     let source_info: ApiSourceInfo;
     let base_url: String;
@@ -338,7 +339,8 @@ async fn search_videos(
         method: Some("GET".to_string()),
         headers: Some(headers),
         body: None,
-        timeout_secs: Some(20), // Default timeout
+        // 前端可按单源搜索设置传入 3–60 秒；缺省保持 20 秒
+        timeout_secs: Some(timeout_secs.unwrap_or(20).clamp(3, 60)),
         response_as_text: Some(true), // Get raw body to pass to JS
     };
 
