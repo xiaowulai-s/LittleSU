@@ -8,6 +8,8 @@ import { hashHue } from '../lib/adapters';
 import { groupChannels } from '../lib/liveParser';
 import type { LiveChannel } from '../lib/liveParser';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
+import { useWakeLock } from '../lib/wakeLock';
+import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
 import { useLivePlaylist, useEpg } from '../lib/hooks';
 import { currentProgram, epgDate, nextProgram } from '../lib/epg';
 import { Button, Chip } from '../ui';
@@ -34,6 +36,7 @@ export default function Live() {
   const [epgDay, setEpgDay] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [cssFullscreen, setCssFullscreen] = useState(false);
   const [portrait, setPortrait] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(orientation: portrait)').matches : false,
@@ -115,7 +118,30 @@ export default function Live() {
         hlsRef.current = null;
       }
     };
-  }, [selected?.url, selected?.id]);
+  }, [selected?.url, selected?.id, retryKey]);
+
+  useWakeLock(playing && Boolean(selected?.url));
+
+  useEffect(() => {
+    if (!selected) return;
+    setMediaInfo({
+      title: selected.name,
+      subtitle: [selected.group, source.name].filter(Boolean).join(' · '),
+      poster: selected.logo || undefined,
+    });
+    setMediaHandlers({
+      play: () => { void videoRef.current?.play(); },
+      pause: () => { videoRef.current?.pause(); },
+    });
+    return () => {
+      setMediaHandlers({ play: null, pause: null });
+      setMediaInfo(null);
+    };
+  }, [selected?.id, selected?.name, selected?.group, selected?.logo, source.name]);
+
+  useEffect(() => {
+    setMediaPlaybackState(playing ? 'playing' : 'paused');
+  }, [playing]);
 
   const groups = useMemo(() => groupChannels(list), [list]);
 
@@ -214,7 +240,12 @@ export default function Live() {
                 <p>{playing ? '正在直播 · 演示画面' : '已暂停'}</p>
               </div>
             )}
-            {playerError && <div className="video-error">{playerError}</div>}
+            {playerError && (
+              <div className="video-error">
+                <span>{playerError}</span>
+                <button type="button" onClick={() => { setPlayerError(null); setRetryKey((value) => value + 1); }}>重试</button>
+              </div>
+            )}
             <div className="live-screen-controls">
               <button type="button" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
                 <Icon name={playing ? 'pause' : 'play'} size={20} />

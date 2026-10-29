@@ -41,6 +41,9 @@ export interface PlaybackSettings {
   density: 'comfortable' | 'compact' | 'wide';
   volume: number;
   autoSwitchSource: boolean;
+  speed: number;
+  fitMode: 'contain' | 'cover';
+  keepAwake: boolean;
 }
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -129,6 +132,9 @@ export function loadSettings(): PlaybackSettings {
     density: 'comfortable',
     volume: 0.8,
     autoSwitchSource: true,
+    speed: 1,
+    fitMode: 'contain',
+    keepAwake: true,
   };
   return { ...defaults, ...readJson<Partial<PlaybackSettings>>(KEYS.settings, {}) };
 }

@@ -2481,6 +2481,10 @@ h1, h2, h3, p { margin: 0; }
   right: 12px;
   top: 12px;
   z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 7px 10px;
   border: 1px solid rgba(251, 113, 133, .3);
   border-radius: 8px;
@@ -2488,6 +2492,17 @@ h1, h2, h3, p { margin: 0; }
   color: #fda4af;
   font-size: 10.5px;
   backdrop-filter: blur(8px);
+}
+.video-error button {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgba(251, 113, 133, .35);
+  border-radius: 6px;
+  background: rgba(251, 113, 133, .12);
+  color: #fecdd3;
+  font-size: 10px;
+  cursor: pointer;
 }
 .live-screen .video-el { z-index: 1; }
 .live-screen-top, .live-screen-center, .live-screen-controls { z-index: 2; }

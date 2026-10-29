@@ -325,6 +325,9 @@ export default function Settings() {
               <SettingRow label="播放失败自动换源" description="当前源播放失败时依次尝试其他源">
                 <Switch checked={settings.autoSwitchSource} onChange={(value) => updateSettings({ autoSwitchSource: value })} />
               </SettingRow>
+              <SettingRow label="播放时保持屏幕常亮" description="浏览器支持 Wake Lock 时生效">
+                <Switch checked={settings.keepAwake} onChange={(value) => updateSettings({ keepAwake: value })} />
+              </SettingRow>
               <SettingRow label="默认音量" description={`当前 ${Math.round(settings.volume * 100)}%`}>
                 <input
                   className="setting-volume"

@@ -9,6 +9,9 @@ import { historyToTitle } from '../lib/adapters';
 import { useDetail } from '../lib/hooks';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
 import { clampBrightness, clampVolume, gestureRatio } from '../lib/gesture';
+import { pickQualityLevel, qualityLabel } from '../lib/quality';
+import { useWakeLock } from '../lib/wakeLock';
+import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
 import { httpText, isTauri } from '../lib/env';
 import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
@@ -72,10 +75,16 @@ export default function Player() {
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [speedIndex, setSpeedIndex] = useState(0);
+  const [speedIndex, setSpeedIndex] = useState(() => {
+    const index = speeds.indexOf(settings.speed);
+    return index >= 0 ? index : 0;
+  });
   const [videoError, setVideoError] = useState<string | null>(null);
   const [playableUrl, setPlayableUrl] = useState('');
   const [resolving, setResolving] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [levels, setLevels] = useState<{ index: number; label: string; height?: number }[]>([]);
+  const [qualityIndex, setQualityIndex] = useState(-1);
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreenState] = useState(false);
   const [cssFullscreen, setCssFullscreen] = useState(false);
@@ -84,7 +93,7 @@ export default function Player() {
   );
   const [locked, setLocked] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain');
+  const [fitMode, setFitMode] = useState<'contain' | 'cover'>(settings.fitMode);
   const [brightness, setBrightness] = useState(1);
   const [gestureHud, setGestureHud] = useState<{ kind: 'brightness' | 'volume'; value: number } | null>(null);
   const [subtitleTracks, setSubtitleTracks] = useState<{ id: number; label: string }[]>([]);
@@ -98,6 +107,13 @@ export default function Player() {
   const gestureRef = useRef<{ kind: 'brightness' | 'volume'; startY: number; startValue: number } | null>(null);
   const triedNextRef = useRef<(reason: string) => boolean>(() => false);
   const fullscreenRef = useRef<() => void>(() => undefined);
+  const settingsRef = useRef(settings);
+  const preferredHeightRef = useRef<number | null>(null);
+  const mediaControlsRef = useRef<{ skipBy: (seconds: number) => void; next: () => void; hasNext: boolean }>({
+    skipBy: () => undefined,
+    next: () => undefined,
+    hasNext: false,
+  });
 
   const current = episodes[episode - 1];
   const sourceUrl = current?.url || '';
@@ -140,6 +156,7 @@ export default function Player() {
     setProgress(0);
     setCurrentTime(0);
     setEpisode((historyRecord?.episodeIndex ?? 0) + 1);
+    preferredHeightRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawKey]);
 
@@ -237,6 +254,8 @@ export default function Player() {
     setAudioTracks([]);
     setSubtitleId(-1);
     setAudioId(0);
+    setLevels([]);
+    setQualityIndex(-1);
     setLocked(false);
     if (Hls.isSupported()) {
       const hls = new Hls(hlsConfigWithNativeLoader(settings.adFilter));
@@ -258,9 +277,31 @@ export default function Player() {
         setSubtitleId(hls.subtitleTrack ?? -1);
         setAudioId(hls.audioTrack ?? 0);
       };
+      const syncLevels = () => {
+        const list = (hls.levels || []).map((level, index) => ({
+          index,
+          label: qualityLabel(level, index),
+          height: level.height || undefined,
+        }));
+        setLevels(list);
+        const preferred = preferredHeightRef.current !== null
+          ? preferredHeightRef.current
+          : settingsRef.current.quality === '4K'
+            ? 2160
+            : settingsRef.current.quality === '1080P'
+              ? 1080
+              : 0;
+        const target = pickQualityLevel(hls.levels || [], preferred);
+        hls.currentLevel = target;
+        setQualityIndex(target);
+      };
       hls.on(Hls.Events.MANIFEST_PARSED, syncTracks);
+      hls.on(Hls.Events.MANIFEST_PARSED, syncLevels);
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, syncTracks);
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, syncTracks);
+      hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+        setQualityIndex(hls.autoLevelEnabled ? -1 : hls.currentLevel);
+      });
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data?.fatal) return;
         const handled = triedNextRef.current(data.details || '播放失败');
@@ -277,7 +318,7 @@ export default function Player() {
         hlsRef.current = null;
       }
     };
-  }, [streamUrl, settings.adFilter, resolving]);
+  }, [streamUrl, settings.adFilter, resolving, reloadKey]);
 
   /* ---------- 音量 ---------- */
   useEffect(() => {
@@ -286,6 +327,56 @@ export default function Player() {
     video.volume = muted ? 0 : settings.volume;
     video.muted = muted;
   }, [streamUrl, settings.volume, muted]);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  /* 记住倍速 */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) video.playbackRate = speeds[speedIndex];
+  }, [streamUrl, speedIndex]);
+
+  useWakeLock(settings.keepAwake && playing && !isMock);
+
+  /* 系统媒体卡片（锁屏 / 通知栏） */
+  useEffect(() => {
+    if (!title) return;
+    setMediaInfo({
+      title: title.name,
+      subtitle: [current?.name, title.source].filter(Boolean).join(' · '),
+      poster: title.poster,
+    });
+    setMediaHandlers({
+      play: () => { void videoRef.current?.play(); },
+      pause: () => { videoRef.current?.pause(); },
+      seekbackward: () => mediaControlsRef.current.skipBy(-10),
+      seekforward: () => mediaControlsRef.current.skipBy(10),
+      seekto: (details) => {
+        const video = videoRef.current;
+        if (video && typeof details.seekTime === 'number') video.currentTime = details.seekTime;
+      },
+      nexttrack: () => {
+        if (mediaControlsRef.current.hasNext) mediaControlsRef.current.next();
+      },
+    });
+    return () => {
+      setMediaHandlers({
+        play: null,
+        pause: null,
+        seekbackward: null,
+        seekforward: null,
+        seekto: null,
+        nexttrack: null,
+      });
+      setMediaInfo(null);
+    };
+  }, [title?.name, title?.source, title?.poster, current?.name]);
+
+  useEffect(() => {
+    setMediaPlaybackState(playing ? 'playing' : 'paused');
+  }, [playing]);
 
   useEffect(() => {
     setPipSupported(typeof document !== 'undefined' && document.pictureInPictureEnabled === true);
@@ -591,6 +682,44 @@ export default function Player() {
     toast(`已切换到 ${variant.sourceName}`, 'success');
   };
 
+  mediaControlsRef.current = {
+    skipBy,
+    next: () => { if (episode < episodes.length) switchEpisode(episode); },
+    hasNext: episode < episodes.length,
+  };
+
+  const selectQuality = (index: number) => {
+    const hls = hlsRef.current;
+    if (!hls) {
+      toast('当前播放内核不支持清晰度切换', 'warning');
+      return;
+    }
+    hls.currentLevel = index;
+    setQualityIndex(index);
+    preferredHeightRef.current = index < 0 ? 0 : (hls.levels[index]?.height || 0);
+    const label = index < 0 ? '自动' : levels.find((level) => level.index === index)?.label || `线路 ${index + 1}`;
+    toast(`清晰度：${label}`, 'success');
+  };
+
+  const retryPlayback = () => {
+    setVideoError(null);
+    triedRef.current = new Set();
+    setReloadKey((value) => value + 1);
+    toast('正在重新加载', 'success');
+  };
+
+  const changeFit = (mode: 'contain' | 'cover') => {
+    setFitMode(mode);
+    updateSettings({ fitMode: mode });
+  };
+
+  const cycleSpeed = () => {
+    const next = (speedIndex + 1) % speeds.length;
+    setSpeedIndex(next);
+    updateSettings({ speed: speeds[next] });
+    if (videoRef.current) videoRef.current.playbackRate = speeds[next];
+  };
+
   const totalSeconds = isMock ? (title.type === '电影' ? 7200 : 2700) : duration;
   const displayTime = isMock ? currentTime : progress > 0 ? (progress / 100) * duration : 0;
   const activeVariantKey = `${title.sourceKey || ''}:${title.vodId || ''}`;
@@ -666,7 +795,12 @@ export default function Player() {
                 <Icon name="play" size={34} />
               </button>
             )}
-            {videoError && <div className="video-error">{videoError}</div>}
+            {videoError && (
+              <div className="video-error">
+                <span>{videoError}</span>
+                <button type="button" onClick={retryPlayback}>重试</button>
+              </div>
+            )}
             <div className="video-controls">
               <button type="button" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
                 <Icon name={playing ? 'pause' : 'play'} size={19} />
@@ -709,11 +843,7 @@ export default function Player() {
               <button
                 type="button"
                 className="video-speed"
-                onClick={() => {
-                  const next = (speedIndex + 1) % speeds.length;
-                  setSpeedIndex(next);
-                  if (videoRef.current) videoRef.current.playbackRate = speeds[next];
-                }}
+                onClick={cycleSpeed}
               >
                 {speeds[speedIndex]}x
               </button>
@@ -864,9 +994,21 @@ export default function Player() {
                     <div className="player-sheet-section">
                       <span className="player-sheet-label">画面比例</span>
                       <div className="player-sheet-chips">
-                        <Chip active={fitMode === 'contain'} onClick={() => setFitMode('contain')}>自适应</Chip>
-                        <Chip active={fitMode === 'cover'} onClick={() => setFitMode('cover')}>填满</Chip>
+                        <Chip active={fitMode === 'contain'} onClick={() => changeFit('contain')}>自适应</Chip>
+                        <Chip active={fitMode === 'cover'} onClick={() => changeFit('cover')}>填满</Chip>
                       </div>
+                    </div>
+                    <div className="player-sheet-section">
+                      <span className="player-sheet-label">清晰度</span>
+                      <div className="player-sheet-chips">
+                        <Chip active={qualityIndex < 0} onClick={() => selectQuality(-1)}>自动</Chip>
+                        {levels.map((level) => (
+                          <Chip key={level.index} active={qualityIndex === level.index} onClick={() => selectQuality(level.index)}>
+                            {level.label}
+                          </Chip>
+                        ))}
+                      </div>
+                      {!levels.length && <small className="player-sheet-hint">当前源未提供多清晰度</small>}
                     </div>
                     <div className="player-sheet-section">
                       <span className="player-sheet-label">字幕</span>
