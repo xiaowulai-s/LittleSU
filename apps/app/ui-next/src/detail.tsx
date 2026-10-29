@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { titles as mockTitles } from './data';
 import type { Title } from './data';
 import { Icon } from './icons';
 import { useApp } from './store';
 import { historyToTitle } from './lib/adapters';
-import { useDetail } from './lib/hooks';
+import { useDetail, useSearch } from './lib/hooks';
 import { cacheTitle } from './lib/titleCache';
+import { CLIENT_RELEASE_URL, shareContent } from './lib/share';
 import { Button, Poster, Rating, SectionHeader } from './ui';
 
 function episodesOf(count: number, type: string) {
@@ -47,6 +47,13 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
   const { title: fetched, loading, error } = useDetail(base);
   const title = fetched ?? base;
 
+  const relatedQuery = title?.genres?.[0] || title?.type || '';
+  const relatedFeed = useSearch(relatedQuery, 'recommended', 3);
+  const related = useMemo(
+    () => relatedFeed.results.filter((item) => item.name !== title?.name).slice(0, 6),
+    [relatedFeed.results, title?.name],
+  );
+
   if (!title) {
     return <div className="detail-empty">没有找到这个条目</div>;
   }
@@ -56,9 +63,6 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
   const episodes = title.episodesList?.length
     ? title.episodesList.map((episode) => episode.name)
     : episodesOf(title.episodes, title.type);
-  const related = mockTitles
-    .filter((item) => item.id !== title.id && (item.type === title.type || item.genres[0] === title.genres[0]))
-    .slice(0, 6);
   const currentSourceKey = title.sourceKey && title.vodId ? `${title.sourceKey}:${title.vodId}` : key;
   const sourceOptions = useMemo(() => {
     const map = new Map<string, { key: string; name: string; sourceKey: string }>();
@@ -140,7 +144,24 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
               >
                 {isFavorite ? '已收藏' : '收藏'}
               </Button>
-              <Button variant="ghost" size="md" icon="external" onClick={() => toast('已复制分享链接（原型）', 'success')}>
+              <Button
+                variant="ghost"
+                size="md"
+                icon="external"
+                onClick={async () => {
+                  const episodeUrl = title.playUrl || title.episodesList?.[0]?.url || '';
+                  const url = /^https?:\/\//i.test(episodeUrl) ? episodeUrl : CLIENT_RELEASE_URL;
+                  const result = await shareContent({
+                    title: `《${title.name}》`,
+                    text: [title.year, title.type, title.source].filter(Boolean).join(' · '),
+                    url,
+                  });
+                  toast(
+                    result === 'shared' ? '已分享' : result === 'copied' ? '分享内容已复制' : '分享失败',
+                    result === 'failed' ? 'warning' : 'success',
+                  );
+                }}
+              >
                 分享
               </Button>
             </div>
@@ -200,12 +221,22 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
           )}
         </section>
 
-        <section className="detail-section">
-          <SectionHeader title="相关推荐" actionLabel="更多" onAction={() => navigate('/search')} />
-          <div className="detail-related">
-            {related.map((item) => <Poster key={item.id} title={item} size="small" />)}
-          </div>
-        </section>
+        {related.length > 0 && (
+          <section className="detail-section">
+            <SectionHeader
+              title="相关推荐"
+              subtitle="来自已启用源的同类内容"
+              actionLabel="更多"
+              onAction={() => {
+                if (inDrawer) closeDrawer();
+                navigate(`/search?q=${encodeURIComponent(relatedQuery)}`);
+              }}
+            />
+            <div className="detail-related">
+              {related.map((item) => <Poster key={item.key ?? item.id} title={item} size="small" />)}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

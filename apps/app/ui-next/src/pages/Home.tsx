@@ -7,8 +7,8 @@ import { Icon } from '../icons';
 import { useApp } from '../store';
 import { favoriteToTitle, historyToTitle } from '../lib/adapters';
 import { useHomeFeed } from '../lib/hooks';
-import { DOUBAN_TAGS, fetchDouban } from '../lib/douban';
-import type { DoubanItem, DoubanTag } from '../lib/douban';
+import { DOUBAN_CATEGORIES, DOUBAN_TABS, fetchDouban } from '../lib/douban';
+import type { DoubanItem, DoubanTabKey } from '../lib/douban';
 import { isTauri } from '../lib/env';
 import { Button, Chip, EmptyState, Rail, Rating } from '../ui';
 
@@ -16,16 +16,20 @@ export default function Home() {
   const navigate = useNavigate();
   const { openTitle, favoriteKeys, toggleFavorite, toast, history, favorites, sourceState, customApis } = useApp();
   const feed = useHomeFeed();
-  const [doubanTag, setDoubanTag] = useState<DoubanTag>('hot-movie');
+  const [doubanTab, setDoubanTab] = useState<DoubanTabKey>('hot-movie');
+  const [doubanCategory, setDoubanCategory] = useState('全部');
   const [doubanItems, setDoubanItems] = useState<DoubanItem[]>([]);
   const [doubanLoading, setDoubanLoading] = useState(false);
   const doubanAvailable = isTauri();
+  const doubanType = DOUBAN_TABS.find((tab) => tab.key === doubanTab)?.type || 'movie';
+  const doubanCategories = DOUBAN_CATEGORIES[doubanType];
 
   useEffect(() => {
     if (!doubanAvailable) return;
     let cancelled = false;
     setDoubanLoading(true);
-    fetchDouban(doubanTag)
+    setDoubanItems([]);
+    fetchDouban(doubanTab, doubanCategory)
       .then((items) => {
         if (!cancelled) setDoubanItems(items);
       })
@@ -38,7 +42,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [doubanTag, doubanAvailable]);
+  }, [doubanTab, doubanCategory, doubanAvailable]);
 
   const items: Title[] = feed.items.length ? feed.items : mockTitles;
   const hero: Title = items.find((item) => item.badge) ?? items[0];
@@ -166,9 +170,23 @@ export default function Home() {
             </div>
           </div>
           <div className="douban-tags">
-            {DOUBAN_TAGS.map((tag) => (
-              <Chip key={tag.key} active={doubanTag === tag.key} onClick={() => setDoubanTag(tag.key)}>
-                {tag.label}
+            {DOUBAN_TABS.map((tab) => (
+              <Chip
+                key={tab.key}
+                active={doubanTab === tab.key}
+                onClick={() => {
+                  setDoubanTab(tab.key);
+                  setDoubanCategory('全部');
+                }}
+              >
+                {tab.label}
+              </Chip>
+            ))}
+          </div>
+          <div className="douban-categories">
+            {doubanCategories.map((category) => (
+              <Chip key={category} active={doubanCategory === category} onClick={() => setDoubanCategory(category)}>
+                {category}
               </Chip>
             ))}
           </div>

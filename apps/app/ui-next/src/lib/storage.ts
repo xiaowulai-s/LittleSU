@@ -10,6 +10,7 @@ export const KEYS = {
   theme: 'lsu.theme',
   settings: 'lsu.settings',
   health: 'lsu.health',
+  searchView: 'lsu.searchView',
 } as const;
 
 export interface HistoryRecord {
@@ -141,6 +142,16 @@ export function loadSettings(): PlaybackSettings {
 
 export function saveSettings(settings: PlaybackSettings): void {
   writeJson(KEYS.settings, settings);
+}
+
+export type SearchView = 'grid' | 'list';
+
+export function loadSearchView(): SearchView {
+  return readJson<string>(KEYS.searchView, 'grid') === 'list' ? 'list' : 'grid';
+}
+
+export function saveSearchView(view: SearchView): void {
+  writeJson(KEYS.searchView, view);
 }
 
 export const HISTORY_LIMIT = 60;

@@ -1,17 +1,65 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { hotSearches, titles as mockTitles } from '../data';
+import { hotSearches } from '../data';
+import type { Title } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
 import { useSearch } from '../lib/hooks';
 import type { SearchScope } from '../lib/hooks';
 import { isSourceHealthy, searchableSources } from '../lib/sources';
-import { Button, Chip, EmptyState, Poster, SectionHeader } from '../ui';
+import { cacheTitle } from '../lib/titleCache';
+import { clearSearchHistory, loadSearchHistory, mergeSearchHistory, saveSearchHistory } from '../lib/searchHistory';
+import { loadSearchView, saveSearchView } from '../lib/storage';
+import type { SearchView } from '../lib/storage';
+import { Button, Chip, EmptyState, Poster, Rating } from '../ui';
 
 const typeFilters = ['全部', '电影', '剧集', '纪录片', '动画'] as const;
 const qualityFilters = ['全部', '4K', '1080P'] as const;
 const sortFilters = ['推荐', '评分', '年份'] as const;
+
+function ResultRow({ title }: { title: Title }) {
+  const { openTitle, favoriteKeys, toggleFavorite, toast } = useApp();
+  const key = title.key ?? title.id;
+  const isFavorite = favoriteKeys.has(key);
+  const open = () => {
+    cacheTitle(title);
+    openTitle(key);
+  };
+  return (
+    <article className="result-row">
+      <button type="button" className="result-row-art" onClick={open} aria-label={`打开 ${title.name}`}>
+        {title.poster ? (
+          <img src={title.poster} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+        ) : (
+          <span>{title.name.slice(0, 1)}</span>
+        )}
+      </button>
+      <div className="result-row-main">
+        <button type="button" className="result-row-title" onClick={open}>{title.name}</button>
+        <div className="result-row-meta">
+          {title.rating > 0 && <Rating value={title.rating} />}
+          {title.year > 0 && <span>{title.year}</span>}
+          <span>{title.type}</span>
+          <span>{title.quality}</span>
+          <span>{title.source}</span>
+        </div>
+        <p className="result-row-synopsis">{title.synopsis}</p>
+      </div>
+      <button
+        type="button"
+        className={`result-row-fav ${isFavorite ? 'is-on' : ''}`}
+        aria-label={isFavorite ? '取消收藏' : '收藏'}
+        onClick={() => {
+          toggleFavorite(title);
+          toast(isFavorite ? '已取消收藏' : `已收藏《${title.name}》`, 'success');
+        }}
+      >
+        <Icon name="heart" size={16} />
+      </button>
+    </article>
+  );
+}
 
 export default function Search() {
   const [params, setParams] = useSearchParams();
@@ -24,6 +72,10 @@ export default function Search() {
   const [sort, setSort] = useState<(typeof sortFilters)[number]>('推荐');
   const [failedOpen, setFailedOpen] = useState(false);
   const [scope, setScope] = useState<SearchScope>('recommended');
+  const [history, setHistory] = useState<string[]>(loadSearchHistory);
+  const [view, setView] = useState<SearchView>(loadSearchView);
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const { loading, results, failures, real, total } = useSearch(urlQuery, scope);
 
   const allSources = useMemo(() => searchableSources(customApis), [customApis]);
@@ -46,23 +98,50 @@ export default function Search() {
     return list;
   }, [results, type, quality, sort]);
 
-  const related = useMemo(
-    () => mockTitles.filter((title) => !filtered.some((item) => (item.key ?? item.id) === title.id)).slice(0, 6),
-    [filtered],
-  );
+  const suggestions = useMemo(() => {
+    const text = value.trim().toLowerCase();
+    if (!focused || !text) return [];
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const item of [...history, ...hotSearches]) {
+      if (!item.toLowerCase().includes(text) || item.toLowerCase() === text || seen.has(item)) continue;
+      seen.add(item);
+      list.push(item);
+      if (list.length >= 6) break;
+    }
+    return list;
+  }, [focused, value, history]);
+
+  const remember = (query: string) => {
+    const next = mergeSearchHistory(history, query);
+    setHistory(next);
+    saveSearchHistory(next);
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const query = value.trim();
     setParams(query ? { q: query } : {});
     if (query) {
+      remember(query);
+      setFocused(false);
       toast(real ? `正在 ${scopeCount} 个源中搜索「${query}」` : `正在示例数据中搜索「${query}」`, 'success');
     }
   };
 
   const runSearch = (query: string) => {
-    setValue(query);
-    setParams({ q: query });
+    const text = query.trim();
+    if (!text) return;
+    remember(text);
+    setValue(text);
+    setParams({ q: text });
+    setFocused(false);
+    inputRef.current?.blur();
+  };
+
+  const changeView = (next: SearchView) => {
+    setView(next);
+    saveSearchView(next);
   };
 
   const showSkeleton = loading && !filtered.length;
@@ -73,8 +152,11 @@ export default function Search() {
         <div className="search-hero-field">
           <Icon name="search" size={20} />
           <input
+            ref={inputRef}
             value={value}
             onChange={(event) => setValue(event.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             placeholder="搜索片名、演员、类型或年份"
             aria-label="搜索"
           />
@@ -82,6 +164,20 @@ export default function Search() {
             <button type="button" className="search-clear" onClick={() => { setValue(''); setParams({}); }} aria-label="清空">
               <Icon name="close" size={16} />
             </button>
+          )}
+          {focused && value.trim() && (
+            <div className="search-suggest" onMouseDown={(event) => event.preventDefault()}>
+              <button type="button" className="search-suggest-item is-primary" onClick={() => runSearch(value)}>
+                <Icon name="search" size={15} />
+                搜索「{value.trim()}」
+              </button>
+              {suggestions.map((item) => (
+                <button type="button" key={item} className="search-suggest-item" onClick={() => runSearch(item)}>
+                  <Icon name="history" size={14} />
+                  {item}
+                </button>
+              ))}
+            </div>
           )}
         </div>
         <Button variant="primary" size="md" type="submit">搜索</Button>
@@ -123,6 +219,31 @@ export default function Search() {
         </div>
       )}
 
+      {!urlQuery && history.length > 0 && (
+        <section className="hot-search-section search-history-section">
+          <div className="section-header">
+            <div><h2>搜索历史</h2><p>最近 {history.length} 条，保存在本机</p></div>
+            <button
+              type="button"
+              className="section-action"
+              onClick={() => {
+                clearSearchHistory();
+                setHistory([]);
+                toast('已清空搜索历史', 'success');
+              }}
+            >
+              清空
+              <Icon name="trash" size={14} />
+            </button>
+          </div>
+          <div className="search-history-chips">
+            {history.map((query) => (
+              <Chip key={query} onClick={() => runSearch(query)}>{query}</Chip>
+            ))}
+          </div>
+        </section>
+      )}
+
       {!urlQuery && (
         <section className="hot-search-section">
           <div className="section-header">
@@ -151,8 +272,12 @@ export default function Search() {
             </p>
           </div>
           <div className="results-view-toggle">
-            <button type="button" className="is-active" aria-label="网格"><Icon name="grid" size={17} /></button>
-            <button type="button" aria-label="列表" onClick={() => toast('列表视图将在下一版提供')}><Icon name="list" size={17} /></button>
+            <button type="button" className={view === 'grid' ? 'is-active' : ''} aria-label="网格" onClick={() => changeView('grid')}>
+              <Icon name="grid" size={17} />
+            </button>
+            <button type="button" className={view === 'list' ? 'is-active' : ''} aria-label="列表" onClick={() => changeView('list')}>
+              <Icon name="list" size={17} />
+            </button>
           </div>
         </div>
 
@@ -163,9 +288,15 @@ export default function Search() {
             ))}
           </div>
         ) : filtered.length ? (
-          <div className="result-grid">
-            {filtered.map((title) => <Poster key={title.key ?? title.id} title={title} showSource />)}
-          </div>
+          view === 'grid' ? (
+            <div className="result-grid">
+              {filtered.map((title) => <Poster key={title.key ?? title.id} title={title} showSource />)}
+            </div>
+          ) : (
+            <div className="result-list">
+              {filtered.map((title) => <ResultRow key={title.key ?? title.id} title={title} />)}
+            </div>
+          )
         ) : urlQuery ? (
           <EmptyState
             icon="search"
@@ -175,15 +306,6 @@ export default function Search() {
           />
         ) : null}
       </section>
-
-      {related.length > 0 && (
-        <section className="results-section related-results">
-          <SectionHeader title="相关推荐" subtitle="基于当前搜索继续发现" />
-          <div className="result-grid">
-            {related.map((title) => <Poster key={title.id} title={title} showSource />)}
-          </div>
-        </section>
-      )}
 
       <div className="search-footnote">
         <Icon name="wifi" size={14} />

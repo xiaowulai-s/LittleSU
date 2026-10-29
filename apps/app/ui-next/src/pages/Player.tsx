@@ -12,6 +12,7 @@ import { clampBrightness, clampVolume, gestureRatio } from '../lib/gesture';
 import { pickQualityLevel, qualityLabel } from '../lib/quality';
 import { useWakeLock } from '../lib/wakeLock';
 import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
+import { CLIENT_RELEASE_URL, shareContent } from '../lib/share';
 import { httpText, isTauri } from '../lib/env';
 import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
@@ -907,7 +908,26 @@ export default function Player() {
                 >
                   {isFavorite ? '已收藏' : '收藏'}
                 </Button>
-                <Button size="sm" variant="ghost" icon="external" onClick={() => toast('已复制分享链接（原型）', 'success')}>分享</Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon="external"
+                  onClick={async () => {
+                    const stream = /^https?:\/\//i.test(streamUrl) ? streamUrl : sourceUrl;
+                    const url = /^https?:\/\//i.test(stream) ? stream : CLIENT_RELEASE_URL;
+                    const result = await shareContent({
+                      title: `《${title.name}》${current?.name ? ` · ${current.name}` : ''}`,
+                      text: [title.source, title.quality].filter(Boolean).join(' · '),
+                      url,
+                    });
+                    toast(
+                      result === 'shared' ? '已分享' : result === 'copied' ? '分享内容已复制' : '分享失败',
+                      result === 'failed' ? 'warning' : 'success',
+                    );
+                  }}
+                >
+                  分享
+                </Button>
               </div>
             </div>
             <p className="player-synopsis">{title.synopsis}</p>

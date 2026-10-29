@@ -10,6 +10,8 @@ import type { LiveChannel } from '../lib/liveParser';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
 import { useWakeLock } from '../lib/wakeLock';
 import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
+import { loadLiveFavorites, mergeLiveFavorite, saveLiveFavorites } from '../lib/liveFavorites';
+import type { LiveFavorite } from '../lib/liveFavorites';
 import { useLivePlaylist, useEpg } from '../lib/hooks';
 import { currentProgram, epgDate, nextProgram } from '../lib/epg';
 import { Button, Chip } from '../ui';
@@ -38,6 +40,8 @@ export default function Live() {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [cssFullscreen, setCssFullscreen] = useState(false);
+  const [favorites, setFavorites] = useState<LiveFavorite[]>(loadLiveFavorites);
+  const [showFavorites, setShowFavorites] = useState(false);
   const [portrait, setPortrait] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(orientation: portrait)').matches : false,
   );
@@ -66,6 +70,11 @@ export default function Live() {
   };
 
   const selected = list.find((channel) => channel.id === selectedId) ?? list[0];
+  const favoriteIds = useMemo(
+    () => new Set(favorites.filter((favorite) => favorite.sourceKey === source.key).map((favorite) => favorite.channelId)),
+    [favorites, source.key],
+  );
+  const selectedFavorite = selected ? favoriteIds.has(selected.id) : false;
   const epgDateStr = useMemo(() => epgDate(epgDay), [epgDay]);
   const epg = useEpg(selected, epgDateStr);
   const programNow = epgDay === 0 && epg.data ? currentProgram(epg.data.programs) : undefined;
@@ -148,11 +157,12 @@ export default function Live() {
   const filtered = useMemo(() => {
     const text = query.trim().toLowerCase();
     return list.filter((channel) => {
-      if (group !== '全部' && channel.group !== group) return false;
+      if (showFavorites && !favoriteIds.has(channel.id)) return false;
+      if (!showFavorites && group !== '全部' && channel.group !== group) return false;
       if (text && !`${channel.name} ${channel.group}`.toLowerCase().includes(text)) return false;
       return true;
     });
-  }, [list, group, query]);
+  }, [list, group, query, showFavorites, favoriteIds]);
 
   const hue = selected ? hashHue(selected.name) : 210;
   const usingFallback = !loaded.length;
@@ -161,7 +171,22 @@ export default function Live() {
     setSourceIndex(index);
     setGroup('全部');
     setQuery('');
+    setShowFavorites(false);
     toast(`已切换到 ${liveSources[index].name}`, 'success');
+  };
+
+  const toggleFavoriteChannel = () => {
+    if (!selected) return;
+    const next = mergeLiveFavorite(favorites, {
+      sourceKey: source.key,
+      channelId: selected.id,
+      name: selected.name,
+      group: selected.group,
+      logo: selected.logo,
+    });
+    setFavorites(next);
+    saveLiveFavorites(next);
+    toast(selectedFavorite ? `已取消收藏 ${selected.name}` : `已收藏 ${selected.name}`, 'success');
   };
 
   const selectChannel = (channel: LiveChannel) => {
@@ -260,7 +285,19 @@ export default function Live() {
           <div className="live-now">
             <div>
               <span className="live-now-kicker">正在播放</span>
-              <h3>{selected?.name || '未选择'}</h3>
+              <h3>
+                {selected?.name || '未选择'}
+                {selected && (
+                  <button
+                    type="button"
+                    className={`live-fav ${selectedFavorite ? 'is-on' : ''}`}
+                    onClick={toggleFavoriteChannel}
+                    aria-label={selectedFavorite ? '取消收藏' : '收藏频道'}
+                  >
+                    <Icon name="heart" size={15} />
+                  </button>
+                )}
+              </h3>
               <p>频道分组：{selected?.group || '-'} · 来源：{source.name}</p>
             </div>
             <div className="live-epg">
@@ -314,7 +351,14 @@ export default function Live() {
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索频道或分组" />
           </div>
           <div className="live-groups">
-            {groups.map((item) => <Chip key={item} active={group === item} onClick={() => setGroup(item)}>{item}</Chip>)}
+            <Chip active={showFavorites} onClick={() => { setShowFavorites(true); setGroup('全部'); }}>
+              收藏 {favoriteIds.size}
+            </Chip>
+            {groups.map((item) => (
+              <Chip key={item} active={!showFavorites && group === item} onClick={() => { setShowFavorites(false); setGroup(item); }}>
+                {item}
+              </Chip>
+            ))}
           </div>
           <div className="live-channel-grid">
             {filtered.map((channel) => (
@@ -331,7 +375,9 @@ export default function Live() {
               </button>
             ))}
           </div>
-          {!filtered.length && <div className="live-empty">没有匹配的频道</div>}
+          {!filtered.length && (
+            <div className="live-empty">{showFavorites ? '还没有收藏频道，选中频道后点心形收藏' : '没有匹配的频道'}</div>
+          )}
         </aside>
       </div>
     </div>

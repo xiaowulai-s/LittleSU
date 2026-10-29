@@ -11,21 +11,39 @@ const CACHE_TTL = 10 * 60 * 1000;
 const DESKTOP_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
-export type DoubanTag = 'hot-movie' | 'high-movie' | 'hot-tv' | 'high-tv';
+export type DoubanType = 'movie' | 'tv';
+export type DoubanSort = 'recommend' | 'time' | 'rank';
+export type DoubanTabKey =
+  | 'hot-movie'
+  | 'high-movie'
+  | 'top-movie'
+  | 'latest-movie'
+  | 'hot-tv'
+  | 'high-tv'
+  | 'latest-tv';
 
-export interface DoubanTagDef {
-  key: DoubanTag;
+export interface DoubanTabDef {
+  key: DoubanTabKey;
   label: string;
-  type: 'movie' | 'tv';
+  type: DoubanType;
   tag: string;
+  sort: DoubanSort;
 }
 
-export const DOUBAN_TAGS: DoubanTagDef[] = [
-  { key: 'hot-movie', label: '热门电影', type: 'movie', tag: '热门' },
-  { key: 'high-movie', label: '高分电影', type: 'movie', tag: '豆瓣高分' },
-  { key: 'hot-tv', label: '热门剧集', type: 'tv', tag: '热门' },
-  { key: 'high-tv', label: '高分剧集', type: 'tv', tag: '豆瓣高分' },
+export const DOUBAN_TABS: DoubanTabDef[] = [
+  { key: 'hot-movie', label: '热门电影', type: 'movie', tag: '热门', sort: 'recommend' },
+  { key: 'high-movie', label: '高分电影', type: 'movie', tag: '豆瓣高分', sort: 'recommend' },
+  { key: 'top-movie', label: 'Top250', type: 'movie', tag: '豆瓣电影Top250', sort: 'rank' },
+  { key: 'latest-movie', label: '最新电影', type: 'movie', tag: '最新', sort: 'time' },
+  { key: 'hot-tv', label: '热门剧集', type: 'tv', tag: '热门', sort: 'recommend' },
+  { key: 'high-tv', label: '高分剧集', type: 'tv', tag: '豆瓣高分', sort: 'recommend' },
+  { key: 'latest-tv', label: '最新剧集', type: 'tv', tag: '最新', sort: 'time' },
 ];
+
+export const DOUBAN_CATEGORIES: Record<DoubanType, string[]> = {
+  movie: ['全部', '剧情', '喜剧', '动作', '爱情', '科幻', '悬疑', '犯罪', '动画', '纪录片'],
+  tv: ['全部', '国产剧', '美剧', '英剧', '韩剧', '日剧', '综艺'],
+};
 
 export interface DoubanItem {
   id: string;
@@ -41,16 +59,36 @@ export function clearDoubanCache(): void {
   cache.clear();
 }
 
-export async function fetchDouban(tagKey: DoubanTag, limit = 18): Promise<DoubanItem[]> {
-  const config = DOUBAN_TAGS.find((item) => item.key === tagKey);
-  if (!config) throw new Error('未知的豆瓣榜单');
+export interface DoubanQuery {
+  type: DoubanType;
+  tag: string;
+  sort: DoubanSort;
+}
+
+/** 分类优先于榜单标签；分类固定按推荐排序。 */
+export function resolveDoubanQuery(tabKey: DoubanTabKey, category = '全部'): DoubanQuery | null {
+  const config = DOUBAN_TABS.find((item) => item.key === tabKey);
+  if (!config) return null;
+  const useCategory = category && category !== '全部';
+  return {
+    type: config.type,
+    tag: useCategory ? category : config.tag,
+    sort: useCategory ? 'recommend' : config.sort,
+  };
+}
+
+export async function fetchDouban(tabKey: DoubanTabKey, category = '全部', limit = 18): Promise<DoubanItem[]> {
+  const config = DOUBAN_TABS.find((item) => item.key === tabKey);
+  const query = resolveDoubanQuery(tabKey, category);
+  if (!config || !query) throw new Error('未知的豆瓣榜单');
   if (!isTauri()) throw new Error('豆瓣推荐需要在客户端内加载');
 
-  const cacheKey = `${tagKey}|${limit}`;
+  const { tag, sort } = query;
+  const cacheKey = `${config.type}|${tag}|${sort}|${limit}`;
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < CACHE_TTL) return hit.items;
 
-  const url = `${API}?type=${config.type}&tag=${encodeURIComponent(config.tag)}&sort=recommend&page_limit=${limit}&page_start=0`;
+  const url = `${API}?type=${config.type}&tag=${encodeURIComponent(tag)}&sort=${sort}&page_limit=${limit}&page_start=0`;
   const data = (await httpJson(url, {
     timeoutSecs: 12,
     headers: {

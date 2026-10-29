@@ -45,16 +45,16 @@ export interface SearchState {
   total: number;
 }
 
-export function useSearch(query: string, scope: SearchScope = 'recommended'): SearchState {
+export function useSearch(query: string, scope: SearchScope = 'recommended', limit?: number): SearchState {
   const { activeSources, health, customApis } = useApp();
 
   const targets = useMemo<SourceDef[]>(() => {
-    if (scope === 'all') return searchableSources(customApis);
-    if (scope === 'ok') {
-      return searchableSources(customApis).filter((source) => isSourceHealthy(source, health));
-    }
-    return activeSources;
-  }, [scope, activeSources, health, customApis]);
+    let list: SourceDef[];
+    if (scope === 'all') list = searchableSources(customApis);
+    else if (scope === 'ok') list = searchableSources(customApis).filter((source) => isSourceHealthy(source, health));
+    else list = activeSources;
+    return limit && limit > 0 ? list.slice(0, limit) : list;
+  }, [scope, activeSources, health, customApis, limit]);
 
   const [state, setState] = useState<SearchState>({ loading: false, results: [], failures: [], real: false, total: 0 });
 
