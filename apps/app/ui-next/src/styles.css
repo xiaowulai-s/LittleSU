@@ -2885,3 +2885,16 @@ h1, h2, h3, p { margin: 0; }
   .player-sheet { max-width: 480px; max-height: 84%; margin: 0; border: 1px solid rgba(255, 255, 255, .1); border-radius: 16px; }
 }
 .player-sheet-tip { margin-top: 12px; color: rgba(255, 255, 255, .42); font-size: 10.5px; line-height: 1.6; }
+
+/* Android 竖屏全屏：把播放层旋转 90°，用户转动手机即可得到真正的横屏铺满 */
+.player-page.is-css-fullscreen.is-landscape-rotate,
+.live-page.is-css-fullscreen.is-landscape-rotate {
+  position: fixed;
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  width: 100vh;
+  height: 100vw;
+  transform: translate(-50%, -50%) rotate(90deg);
+  transform-origin: center;
+}

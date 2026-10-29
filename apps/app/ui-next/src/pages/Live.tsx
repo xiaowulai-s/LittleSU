@@ -22,7 +22,7 @@ const fallbackChannels: LiveChannel[] = mockChannelData.map((channel) => ({
 }));
 
 export default function Live() {
-  const { toast } = useApp();
+  const { toast, device } = useApp();
   const [sourceIndex, setSourceIndex] = useState(0);
   const [group, setGroup] = useState('全部');
   const [query, setQuery] = useState('');
@@ -35,8 +35,32 @@ export default function Live() {
   const [playing, setPlaying] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [cssFullscreen, setCssFullscreen] = useState(false);
+  const [portrait, setPortrait] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(orientation: portrait)').matches : false,
+  );
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const rotateLandscape = device === 'android' && cssFullscreen && portrait;
+
+  useEffect(() => {
+    const media = window.matchMedia('(orientation: portrait)');
+    const onChange = (event: MediaQueryListEvent) => setPortrait(event.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (device !== 'android' || !cssFullscreen) return;
+    const orientation = window.screen?.orientation as unknown as { lock?: (mode: string) => Promise<void>; unlock?: () => void } | undefined;
+    void orientation?.lock?.('landscape').catch(() => undefined);
+    return () => { orientation?.unlock?.(); };
+  }, [device, cssFullscreen]);
+
+  const toggleFullscreen = () => {
+    const next = !cssFullscreen;
+    setCssFullscreen(next);
+    if (next && device === 'android' && portrait) toast('已横向铺满，请旋转手机观看', 'success');
+  };
 
   const selected = list.find((channel) => channel.id === selectedId) ?? list[0];
   const epgDateStr = useMemo(() => epgDate(epgDay), [epgDay]);
@@ -131,7 +155,7 @@ export default function Live() {
   };
 
   return (
-    <div className={`live-page ${cssFullscreen ? 'is-css-fullscreen' : ''}`}>
+    <div className={`live-page ${cssFullscreen ? 'is-css-fullscreen' : ''} ${rotateLandscape ? 'is-landscape-rotate' : ''}`}>
       <div className="live-head">
         <div>
           <div className="page-kicker"><i className="live-dot" />LIVE · 5 个内置直播源</div>
@@ -199,7 +223,7 @@ export default function Live() {
                 {Array.from({ length: 26 }, (_, index) => <i key={index} style={{ height: `${8 + ((index * 7) % 22)}px` }} />)}
               </div>
               <button type="button" onClick={() => toast('音量控制将在实现阶段接入')} aria-label="音量"><Icon name="volume" size={18} /></button>
-              <button type="button" onClick={() => setCssFullscreen((value) => !value)} aria-label={cssFullscreen ? '退出全屏' : '全屏'}><Icon name="fullscreen" size={18} /></button>
+              <button type="button" onClick={toggleFullscreen} aria-label={cssFullscreen ? '退出全屏' : '全屏'}><Icon name="fullscreen" size={18} /></button>
             </div>
           </div>
           <div className="live-now">

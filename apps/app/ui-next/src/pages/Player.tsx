@@ -79,6 +79,9 @@ export default function Player() {
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreenState] = useState(false);
   const [cssFullscreen, setCssFullscreen] = useState(false);
+  const [portrait, setPortrait] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(orientation: portrait)').matches : false,
+  );
   const [locked, setLocked] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain');
@@ -102,6 +105,22 @@ export default function Player() {
   const isMock = !streamUrl && !resolving;
   const isFavorite = favoriteKeys.has(rawKey);
   const key = rawKey;
+  const rotateLandscape = device === 'android' && cssFullscreen && portrait;
+
+  useEffect(() => {
+    const media = window.matchMedia('(orientation: portrait)');
+    const onChange = (event: MediaQueryListEvent) => setPortrait(event.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  /* 优先请求系统横屏；WebView 不支持时由 CSS 旋转兜底 */
+  useEffect(() => {
+    if (device !== 'android' || !cssFullscreen) return;
+    const orientation = window.screen?.orientation as unknown as { lock?: (mode: string) => Promise<void>; unlock?: () => void } | undefined;
+    void orientation?.lock?.('landscape').catch(() => undefined);
+    return () => { orientation?.unlock?.(); };
+  }, [device, cssFullscreen]);
 
   const uniqueVariants = useMemo(() => {
     const map = new Map<string, { sourceKey: string; sourceName: string; vodId: string; playable: number }>();
@@ -351,9 +370,9 @@ export default function Player() {
       setSheetOpen(false);
     }
     if (device === 'android') {
-      // Android WebView 通常拿不到 Fullscreen API，直接铺满页面
       setCssFullscreen(next);
       setFullscreenState(next);
+      if (next && portrait) toast('已横向铺满，请旋转手机观看', 'success');
       return;
     }
     const ok = await setFullscreen(next);
@@ -495,7 +514,7 @@ export default function Player() {
   };
 
   const onSurfaceTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (!cssFullscreen || locked || sheetOpen) return;
+    if (!cssFullscreen || locked || sheetOpen || rotateLandscape) return;
     const target = event.target as HTMLElement;
     if (target.closest('.video-controls, .player-sheet-layer, .player-unlock')) return;
     const touch = event.touches[0];
@@ -578,7 +597,7 @@ export default function Player() {
   const statusText = switching || detailLoading ? '切换源中…' : isMock ? '演示播放' : '原生取流';
 
   return (
-    <div className={`player-page ${cssFullscreen ? 'is-css-fullscreen' : ''}`}>
+    <div className={`player-page ${cssFullscreen ? 'is-css-fullscreen' : ''} ${rotateLandscape ? 'is-landscape-rotate' : ''}`}>
       <header className="player-topbar">
         <button type="button" className="player-back" onClick={() => navigate(-1)} aria-label="返回">
           <Icon name="back" size={19} />
