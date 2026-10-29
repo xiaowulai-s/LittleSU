@@ -273,6 +273,7 @@ async fn search_videos(
     query: String,
     source_id: String,
     custom_api_url: Option<String>,
+    page: Option<u32>,
 ) -> Result<String, HttpError> {
     let source_info: ApiSourceInfo;
     let base_url: String;
@@ -318,7 +319,13 @@ async fn search_videos(
     let search_path_template = source_info.search_path.as_deref().unwrap_or(&API_PATH_DEFAULTS.search);
     // Ensure query is URL encoded
     let encoded_query = urlencoding::encode(&query);
-    let full_url = format!("{}{}{}", base_url, search_path_template, encoded_query);
+    let page = page.unwrap_or(1).max(1);
+    let page_param = if search_path_template.contains("pg=") {
+        String::new()
+    } else {
+        format!("&pg={}", page)
+    };
+    let full_url = format!("{}{}{}{}", base_url, search_path_template, encoded_query, page_param);
 
     // Prepare headers - use defaults from API_CONFIG in JS for now
     // Later, API_CONFIG.search.headers can also be moved to Rust

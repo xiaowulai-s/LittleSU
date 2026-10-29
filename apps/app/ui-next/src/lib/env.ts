@@ -127,6 +127,7 @@ export async function rustSearch(
   sourceId: string,
   query: string,
   customApiUrl?: string,
+  page = 1,
 ): Promise<string> {
   const invoke = getInvoke();
   if (!invoke) throw new Error('not-tauri');
@@ -134,6 +135,7 @@ export async function rustSearch(
     query,
     sourceId,
     customApiUrl: customApiUrl ?? null,
+    page,
   })) as string;
 }
 

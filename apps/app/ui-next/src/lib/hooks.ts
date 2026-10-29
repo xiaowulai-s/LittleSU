@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Episode, Title } from '../data';
 import { titles as mockTitles } from '../data';
 import { useApp } from '../store';
-import { applyDetail, buildTitle, dedupeTitles, parseDetail, parseSearchResponse } from './cms';
+import { applyDetail, buildTitle, dedupeTitles, parseDetail, parseSearchPage } from './cms';
+import { mergeVariantCandidates } from './variants';
 import type { CmsItem } from './cms';
 import { httpJson, httpText, isTauri, rustSearch } from './env';
 import { detailUrlFor, findSource, isSourceHealthy, latestUrlFor, searchableSources } from './sources';
@@ -28,21 +29,24 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-async function searchOneSource(source: SourceDef, query: string): Promise<Title[]> {
+async function searchOneSource(source: SourceDef, query: string, page = 1): Promise<{ titles: Title[]; pageCount?: number }> {
   const raw = source.custom
-    ? await rustSearch('custom', query, source.base)
-    : await rustSearch(source.key, query);
-  return parseSearchResponse(raw, source, source.name);
+    ? await rustSearch('custom', query, source.base, page)
+    : await rustSearch(source.key, query, undefined, page);
+  return parseSearchPage(raw, source, source.name);
 }
 
 export type SearchScope = 'recommended' | 'all' | 'ok';
 
 export interface SearchState {
   loading: boolean;
+  loadingMore: boolean;
   results: Title[];
   failures: { name: string; reason: string }[];
   real: boolean;
   total: number;
+  hasMore: boolean;
+  loadMore: () => void;
 }
 
 export function useSearch(query: string, scope: SearchScope = 'recommended', limit?: number): SearchState {
@@ -56,12 +60,90 @@ export function useSearch(query: string, scope: SearchScope = 'recommended', lim
     return limit && limit > 0 ? list.slice(0, limit) : list;
   }, [scope, activeSources, health, customApis, limit]);
 
-  const [state, setState] = useState<SearchState>({ loading: false, results: [], failures: [], real: false, total: 0 });
+  const [state, setState] = useState<SearchState>({
+    loading: false,
+    loadingMore: false,
+    results: [],
+    failures: [],
+    real: false,
+    total: 0,
+    hasMore: false,
+    loadMore: () => undefined,
+  });
+  const textRef = useRef('');
+  const targetsRef = useRef<SourceDef[]>(targets);
+  const limitRef = useRef<number | undefined>(limit);
+  const runRef = useRef(0);
+  const pageRef = useRef(1);
+  const resultsRef = useRef<Title[]>([]);
+  const failuresRef = useRef<{ name: string; reason: string }[]>([]);
+  const busyRef = useRef(false);
+
+  const loadPage = useCallback(async (page: number, append: boolean) => {
+    const text = textRef.current;
+    const sources = targetsRef.current;
+    if (!text || !sources.length) return;
+    const runId = runRef.current;
+    busyRef.current = true;
+    if (append) setState((prev) => ({ ...prev, loadingMore: true }));
+    const existing = new Set(resultsRef.current.map((title) => title.key ?? title.id));
+    let added = 0;
+    let maxPageCount = 0;
+    let index = 0;
+
+    const worker = async () => {
+      while (true) {
+        const cursor = index;
+        index += 1;
+        if (cursor >= sources.length || runId !== runRef.current) return;
+        const source = sources[cursor];
+        try {
+          const { titles, pageCount } = await withTimeout(searchOneSource(source, text, page), 12000);
+          if (runId !== runRef.current) return;
+          if (pageCount) maxPageCount = Math.max(maxPageCount, pageCount);
+          if (!titles.length) continue;
+          const fresh: Title[] = [];
+          titles.forEach((title) => {
+            const key = title.key ?? title.id;
+            if (existing.has(key)) return;
+            existing.add(key);
+            fresh.push(title);
+          });
+          if (!fresh.length) continue;
+          added += fresh.length;
+          resultsRef.current = dedupeTitles([...resultsRef.current, ...fresh]).slice(0, 500);
+          setState((prev) => ({ ...prev, results: resultsRef.current }));
+        } catch (error: unknown) {
+          if (runId !== runRef.current) return;
+          failuresRef.current = [
+            ...failuresRef.current,
+            { name: source.name, reason: error instanceof Error ? error.message : '请求失败' },
+          ];
+          setState((prev) => ({ ...prev, failures: failuresRef.current }));
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(6, sources.length) }, worker));
+    if (runId !== runRef.current) return;
+    busyRef.current = false;
+    const hasMore = !limitRef.current && page < 20 && added > 0 && (maxPageCount ? page < maxPageCount : true);
+    setState((prev) => ({ ...prev, loading: false, loadingMore: false, hasMore }));
+  }, []);
 
   useEffect(() => {
     const text = query.trim();
+    textRef.current = text;
+    targetsRef.current = targets;
+    limitRef.current = limit;
+    runRef.current += 1;
+    pageRef.current = 1;
+    resultsRef.current = [];
+    failuresRef.current = [];
+    busyRef.current = false;
+
     if (!text) {
-      setState({ loading: false, results: [], failures: [], real: false, total: targets.length });
+      setState({ loading: false, loadingMore: false, results: [], failures: [], real: false, total: targets.length, hasMore: false, loadMore: () => undefined });
       return;
     }
     if (!isTauri() || !targets.length) {
@@ -71,49 +153,24 @@ export function useSearch(query: string, scope: SearchScope = 'recommended', lim
           (value || '').toLowerCase().includes(lower),
         ),
       );
-      setState({ loading: false, results, failures: [], real: false, total: targets.length });
+      setState({ loading: false, loadingMore: false, results, failures: [], real: false, total: targets.length, hasMore: false, loadMore: () => undefined });
       return;
     }
 
-    let cancelled = false;
-    const collected: Title[] = [];
-    const failures: { name: string; reason: string }[] = [];
-    const sources = targets;
-    let index = 0;
-    setState({ loading: true, results: [], failures: [], real: true, total: sources.length });
-
-    const worker = async () => {
-      while (!cancelled) {
-        const cursor = index;
-        index += 1;
-        if (cursor >= sources.length) return;
-        const source = sources[cursor];
-        try {
-          const list = await withTimeout(searchOneSource(source, text), 12000);
-          if (cancelled || !list.length) continue;
-          collected.push(...list);
-          setState((prev) => ({ ...prev, results: dedupeTitles([...collected]).slice(0, 200) }));
-        } catch (error: unknown) {
-          if (cancelled) return;
-          failures.push({
-            name: source.name,
-            reason: error instanceof Error ? error.message : '请求失败',
-          });
-          setState((prev) => ({ ...prev, failures: [...failures] }));
-        }
-      }
-    };
-
-    Promise.all(Array.from({ length: Math.min(6, sources.length) }, worker)).then(() => {
-      if (!cancelled) setState((prev) => ({ ...prev, loading: false }));
-    });
-
+    setState({ loading: true, loadingMore: false, results: [], failures: [], real: true, total: targets.length, hasMore: false, loadMore: () => undefined });
+    void loadPage(1, false);
     return () => {
-      cancelled = true;
+      runRef.current += 1;
     };
-  }, [query, targets]);
+  }, [query, targets, limit, loadPage]);
 
-  return state;
+  const loadMore = useCallback(() => {
+    if (busyRef.current || state.loading || state.loadingMore || !state.hasMore) return;
+    pageRef.current += 1;
+    void loadPage(pageRef.current, true);
+  }, [state.loading, state.loadingMore, state.hasMore, loadPage]);
+
+  return { ...state, loadMore };
 }
 
 function parseHtmlEpisodes(html: string): Episode[] {
@@ -142,7 +199,7 @@ export interface DetailState {
 }
 
 export function useDetail(title: Title | undefined): DetailState {
-  const { customApis } = useApp();
+  const { customApis, activeSources } = useApp();
   const [state, setState] = useState<DetailState>({ title, loading: false });
 
   const key = title?.key ?? title?.id;
@@ -168,6 +225,24 @@ export function useDetail(title: Title | undefined): DetailState {
 
     let cancelled = false;
     setState({ title, loading: true });
+
+    /** 收藏/历史进入时没有 variants，按片名在前几个已启用源回查，恢复详情页换源。 */
+    const enrichVariants = async (detail: Title): Promise<Title> => {
+      if (detail.variants?.length || !detail.sourceKey || !detail.vodId || !detail.name) return detail;
+      const sources = activeSources
+        .filter((item) => item.key !== detail.sourceKey && item.status !== 'experimental')
+        .slice(0, 4);
+      if (!sources.length) return detail;
+      const found = await Promise.all(sources.map(async (item) => {
+        try {
+          const { titles } = await withTimeout(searchOneSource(item, detail.name), 9000);
+          return titles.map((result) => ({ title: result, sourceKey: item.key, sourceName: item.name }));
+        } catch {
+          return [];
+        }
+      }));
+      return mergeVariantCandidates(detail, found.flat());
+    };
 
     (async () => {
       const base = title as Title;
@@ -196,12 +271,12 @@ export function useDetail(title: Title | undefined): DetailState {
             }
           }
         }
-        return primary;
+        return enrichVariants(primary);
       }
       const html = await withTimeout(httpText(detailUrlFor(source, base.vodId as string)), 15000);
       const episodes = parseHtmlEpisodes(html);
       if (!episodes.length) throw new Error('未获取到剧集信息');
-      return { ...base, episodesList: episodes, playUrl: episodes[0].url, episodes: episodes.length };
+      return enrichVariants({ ...base, episodesList: episodes, playUrl: episodes[0].url, episodes: episodes.length });
     })()
       .then((merged) => {
         if (!cancelled) setState({ title: merged, loading: false });
@@ -219,7 +294,7 @@ export function useDetail(title: Title | undefined): DetailState {
     return () => {
       cancelled = true;
     };
-  }, [key, title, customApis]);
+  }, [key, title, customApis, activeSources]);
 
   return state;
 }

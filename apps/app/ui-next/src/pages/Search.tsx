@@ -76,7 +76,7 @@ export default function Search() {
   const [view, setView] = useState<SearchView>(loadSearchView);
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { loading, results, failures, real, total } = useSearch(urlQuery, scope);
+  const { loading, loadingMore, results, failures, real, total, hasMore, loadMore } = useSearch(urlQuery, scope);
 
   const allSources = useMemo(() => searchableSources(customApis), [customApis]);
   const okCount = useMemo(
@@ -305,6 +305,14 @@ export default function Search() {
             action={<Button variant="primary" onClick={() => { setType('全部'); setQuality('全部'); setSort('推荐'); }}>清除筛选</Button>}
           />
         ) : null}
+
+        {real && (hasMore || loadingMore) && (
+          <div className="search-more">
+            <Button variant="secondary" size="md" icon="refresh" disabled={loadingMore} onClick={loadMore}>
+              {loadingMore ? '正在加载更多…' : '加载更多'}
+            </Button>
+          </div>
+        )}
       </section>
 
       <div className="search-footnote">

@@ -8,7 +8,7 @@ import { historyToTitle } from './lib/adapters';
 import { useDetail, useSearch } from './lib/hooks';
 import { cacheTitle } from './lib/titleCache';
 import { CLIENT_RELEASE_URL, shareContent } from './lib/share';
-import { Button, Poster, Rating, SectionHeader } from './ui';
+import { Button, Chip, Poster, Rating, SectionHeader } from './ui';
 
 function episodesOf(count: number, type: string) {
   if (type === '电影') return ['正片'];
@@ -53,6 +53,7 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
     () => relatedFeed.results.filter((item) => item.name !== title?.name).slice(0, 6),
     [relatedFeed.results, title?.name],
   );
+  const [lineIndex, setLineIndex] = useState(0);
 
   if (!title) {
     return <div className="detail-empty">没有找到这个条目</div>;
@@ -60,9 +61,13 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
 
   const key = title.key ?? title.id;
   const isFavorite = favoriteKeys.has(key);
-  const episodes = title.episodesList?.length
-    ? title.episodesList.map((episode) => episode.name)
-    : episodesOf(title.episodes, title.type);
+  const lines = title.playLines ?? [];
+  const activeLine = lines[lineIndex] ?? lines[0];
+  const episodes = activeLine?.episodes.length
+    ? activeLine.episodes.map((episode) => episode.name)
+    : title.episodesList?.length
+      ? title.episodesList.map((episode) => episode.name)
+      : episodesOf(title.episodes, title.type);
   const currentSourceKey = title.sourceKey && title.vodId ? `${title.sourceKey}:${title.vodId}` : key;
   const sourceOptions = useMemo(() => {
     const map = new Map<string, { key: string; name: string; sourceKey: string }>();
@@ -77,7 +82,7 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
   }, [title, currentSourceKey]);
 
   const play = () => {
-    cacheTitle(title);
+    cacheTitle({ ...title, playLineIndex: lineIndex });
     navigate(`/player/${encodeURIComponent(key)}`);
   };
 
@@ -87,6 +92,7 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
       return;
     }
     setVariantKey(option.key);
+    setLineIndex(0);
     toast(`正在切换到 ${option.name}`, 'success');
   };
 
@@ -198,6 +204,19 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
             })}
           </div>
         </section>
+
+        {lines.length > 1 && (
+          <section className="detail-section">
+            <SectionHeader title="线路" subtitle="同一源的多条播放线路，切换后剧集随之更新" />
+            <div className="detail-lines">
+              {lines.map((line, index) => (
+                <Chip key={`${line.name}-${index}`} active={index === lineIndex} onClick={() => setLineIndex(index)}>
+                  {line.name}
+                </Chip>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="detail-section">
           <SectionHeader

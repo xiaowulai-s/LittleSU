@@ -65,12 +65,17 @@ export default function Player() {
   const { title: detailed, loading: detailLoading } = useDetail(activeTitle);
   const title = detailed ?? activeTitle;
 
+  const [lineIndex, setLineIndex] = useState(() => baseTitle?.playLineIndex ?? 0);
   const episodes = useMemo<Episode[]>(() => {
     if (!title) return [];
+    if (title.playLines?.length) {
+      return title.playLines[lineIndex]?.episodes ?? title.playLines[0]?.episodes ?? [];
+    }
     if (title.episodesList?.length) return title.episodesList;
     if (title.playUrl) return [{ name: '正片', url: title.playUrl }];
     return mockEpisodes(title);
-  }, [title]);
+  }, [title, lineIndex]);
+  const lineName = title?.playLines?.[lineIndex]?.name;
 
   const [episode, setEpisode] = useState(() => (historyRecord?.episodeIndex ?? 0) + 1);
   const [playing, setPlaying] = useState(false);
@@ -163,6 +168,7 @@ export default function Player() {
     setProgress(0);
     setCurrentTime(0);
     setEpisode((historyRecord?.episodeIndex ?? 0) + 1);
+    setLineIndex(baseTitle?.playLineIndex ?? 0);
     preferredHeightRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawKey]);
@@ -192,6 +198,7 @@ export default function Player() {
       playUrl: undefined,
     });
     setEpisode(1);
+    setLineIndex(0);
     setProgress(0);
     setCurrentTime(0);
     setPlaying(true);
@@ -748,6 +755,18 @@ export default function Player() {
     toast(`正在播放 ${episodes[index]?.name || `第 ${index + 1} 集`}`);
   };
 
+  const switchLine = (index: number) => {
+    if (!title?.playLines?.[index]) return;
+    setLineIndex(index);
+    setEpisode(1);
+    setCurrentTime(0);
+    setProgress(0);
+    setPlaying(true);
+    setVideoError(null);
+    setSheetOpen(false);
+    toast(`已切换到线路 ${title.playLines[index].name}`, 'success');
+  };
+
   const switchToVariant = (variant: { sourceKey: string; sourceName: string; vodId: string }) => {
     if (!title) return;
     const nextKey = `${variant.sourceKey}:${variant.vodId}`;
@@ -763,6 +782,7 @@ export default function Player() {
       playUrl: undefined,
     });
     setEpisode(1);
+    setLineIndex(0);
     setProgress(0);
     setCurrentTime(0);
     setPlaying(true);
@@ -821,7 +841,7 @@ export default function Player() {
         </button>
         <div className="player-topbar-title">
           <strong>{title.name}</strong>
-          <span>{current?.name || '正片'} · {title.source} · {title.quality} · {statusText}</span>
+          <span>{current?.name || '正片'} · {title.source}{lineName ? ` · ${lineName}` : ''} · {title.quality} · {statusText}</span>
         </div>
         <div className="player-topbar-actions">
           <Chip>{title.quality}</Chip>
@@ -1105,6 +1125,18 @@ export default function Player() {
                         <Chip active={fitMode === 'cover'} onClick={() => changeFit('cover')}>填满</Chip>
                       </div>
                     </div>
+                    {title.playLines && title.playLines.length > 1 && (
+                      <div className="player-sheet-section">
+                        <span className="player-sheet-label">线路</span>
+                        <div className="player-sheet-chips">
+                          {title.playLines.map((line, index) => (
+                            <Chip key={`${line.name}-${index}`} active={lineIndex === index} onClick={() => switchLine(index)}>
+                              {line.name}
+                            </Chip>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div className="player-sheet-section">
                       <span className="player-sheet-label">清晰度</span>
                       <div className="player-sheet-chips">

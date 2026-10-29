@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTitle, dedupeTitles, parsePlayUrl, parseSearchResponse, qualityFrom } from './cms';
+import { buildTitle, dedupeTitles, parsePlayLines, parsePlayUrl, parseSearchPage, parseSearchResponse, qualityFrom } from './cms';
 import type { SourceDef } from './sources';
 
 const source: SourceDef = {
@@ -49,6 +49,26 @@ describe('cms 解析', () => {
     const episodes = parsePlayUrl('正片 https://cdn/movie.m3u8 备用');
     expect(episodes).toHaveLength(1);
     expect(episodes[0].url).toBe('https://cdn/movie.m3u8');
+  });
+
+  it('按 $$$ 拆分同源多线路，不再把两套剧集拼在一起', () => {
+    const raw = [
+      '第1集$https://cdn/a1.m3u8#第2集$https://cdn/a2.m3u8',
+      '第1集$https://cdn/b1.m3u8#第2集$https://cdn/b2.m3u8',
+    ].join('$$$');
+    const lines = parsePlayLines(raw, '量子$$$备用');
+    expect(lines).toHaveLength(2);
+    expect(lines[0].name).toBe('量子');
+    expect(lines[1].name).toBe('备用');
+    expect(lines[0].episodes).toHaveLength(2);
+    expect(lines[1].episodes[0].url).toBe('https://cdn/b1.m3u8');
+  });
+
+  it('读取搜索响应的 pagecount', () => {
+    const raw = JSON.stringify({ pagecount: 3, list: [{ vod_id: 1, vod_name: '测试', type_name: '电影' }] });
+    const page = parseSearchPage(raw, source, source.name);
+    expect(page.pageCount).toBe(3);
+    expect(page.titles).toHaveLength(1);
   });
 
   it('跨源去重并合并来源', () => {

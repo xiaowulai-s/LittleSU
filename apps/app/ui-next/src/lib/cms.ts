@@ -134,34 +134,57 @@ interface PlayEntry {
   url: string;
 }
 
-function splitPlayUrl(raw: string): PlayEntry[] {
-  const groups = raw.split('$$$');
-  const entries: PlayEntry[] = [];
-  for (const group of groups) {
-    const parts = group.split('#');
-    for (const part of parts) {
-      const sep = part.indexOf('$');
-      if (sep < 0) continue;
-      const name = part.slice(0, sep).trim();
-      const url = part.slice(sep + 1).trim();
-      if (/^https?:\/\//i.test(url)) entries.push({ name: name || '正片', url });
-    }
-  }
-  if (entries.length) return entries;
-  const matches = raw.match(/https?:\/\/[^\s#$]+/g) || [];
-  return matches.map((url, index) => ({ name: `第 ${index + 1} 集`, url }));
+export interface PlayLine {
+  name: string;
+  episodes: Episode[];
 }
 
-export function parsePlayUrl(raw: string | undefined): Episode[] {
-  if (!raw) return [];
+function parseGroupEntries(group: string): PlayEntry[] {
+  const entries: PlayEntry[] = [];
+  for (const part of group.split('#')) {
+    const sep = part.indexOf('$');
+    if (sep < 0) continue;
+    const name = part.slice(0, sep).trim();
+    const url = part.slice(sep + 1).trim();
+    if (/^https?:\/\//i.test(url)) entries.push({ name: name || '正片', url });
+  }
+  return entries;
+}
+
+function dedupeEntries(entries: PlayEntry[]): Episode[] {
   const seen = new Set<string>();
-  return splitPlayUrl(raw)
+  return entries
     .filter((entry) => {
       if (seen.has(entry.url)) return false;
       seen.add(entry.url);
       return true;
     })
     .map((entry) => ({ name: entry.name, url: entry.url }));
+}
+
+/**
+ * 按 $$$ 拆分同源多线路；vod_play_from 与 vod_play_url 的分组一一对应。
+ * 之前把所有线路的剧集拼在一起，导致同一部剧的 1-20 集显示两遍。
+ */
+export function parsePlayLines(raw: string | undefined, fromRaw?: string): PlayLine[] {
+  if (!raw) return [];
+  const groups = raw.split('$$$');
+  const names = (fromRaw || '').split('$$$');
+  const lines: PlayLine[] = [];
+  groups.forEach((group, index) => {
+    const episodes = dedupeEntries(parseGroupEntries(group));
+    if (!episodes.length) return;
+    const name = (names[index] || '').trim() || `线路 ${index + 1}`;
+    lines.push({ name, episodes });
+  });
+  if (lines.length) return lines;
+  const matches = raw.match(/https?:\/\/[^\s#$]+/g) || [];
+  const fallback = dedupeEntries(matches.map((url, index) => ({ name: `第 ${index + 1} 集`, url })));
+  return fallback.length ? [{ name: '线路 1', episodes: fallback }] : [];
+}
+
+export function parsePlayUrl(raw: string | undefined): Episode[] {
+  return parsePlayLines(raw).flatMap((line) => line.episodes);
 }
 
 export function parseDetail(json: unknown): CmsItem | null {
@@ -172,7 +195,10 @@ export function parseDetail(json: unknown): CmsItem | null {
 }
 
 export function applyDetail(title: Title, item: CmsItem): Title {
-  const episodes = parsePlayUrl(str(item, ['vod_play_url', 'play_url', 'vod_url']));
+  const playRaw = str(item, ['vod_play_url', 'play_url', 'vod_url']);
+  const fromRaw = str(item, ['vod_play_from', 'play_from']);
+  const lines = parsePlayLines(playRaw, fromRaw);
+  const episodes = lines[0]?.episodes ?? [];
   const content = str(item, ['vod_content', 'vod_blurb', 'content']);
   const poster = str(item, ['vod_pic', 'pic']);
   const actor = str(item, ['vod_actor', 'actor']);
@@ -192,6 +218,7 @@ export function applyDetail(title: Title, item: CmsItem): Title {
     synopsis: stripHtml(content) || title.synopsis,
     episodes: episodes.length || title.episodes,
     episodesList: episodes,
+    playLines: lines.length ? lines : undefined,
     playUrl: episodes[0]?.url,
     genres: typeName ? typeName.split(/[,/、]/).filter(Boolean).slice(0, 3) : title.genres,
     note: actor ? `主演：${actor}` : director ? `导演：${director}` : title.note,
@@ -199,16 +226,39 @@ export function applyDetail(title: Title, item: CmsItem): Title {
 }
 
 export function parseSearchResponse(raw: string, source: SourceDef, sourceName: string): Title[] {
+  return parseSearchPage(raw, source, sourceName).titles;
+}
+
+export interface CmsSearchPage {
+  titles: Title[];
+  pageCount?: number;
+}
+
+/** 解析搜索响应，同时读取 pagecount 以支持“加载更多”。 */
+export function parseSearchPage(raw: string, source: SourceDef, sourceName: string): CmsSearchPage {
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    return [];
+    return { titles: [] };
   }
-  const data = json as { list?: CmsItem[]; data?: CmsItem[]; result?: CmsItem[] } | null;
+  const data = json as {
+    list?: CmsItem[];
+    data?: CmsItem[];
+    result?: CmsItem[];
+    pagecount?: unknown;
+    total_pages?: unknown;
+    total?: unknown;
+    limit?: unknown;
+  } | null;
   const list = data?.list || data?.data || data?.result;
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((item) => buildTitle(item, source, sourceName))
-    .filter((title): title is Title => Boolean(title));
+  if (!Array.isArray(list)) return { titles: [] };
+  const pageCountRaw = Number(data?.pagecount ?? data?.total_pages ?? 0);
+  const pageCount = Number.isFinite(pageCountRaw) && pageCountRaw > 0 ? pageCountRaw : undefined;
+  return {
+    titles: list
+      .map((item) => buildTitle(item, source, sourceName))
+      .filter((title): title is Title => Boolean(title)),
+    pageCount,
+  };
 }

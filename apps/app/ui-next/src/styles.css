@@ -3063,3 +3063,7 @@ h1, h2, h3, p { margin: 0; }
 [data-density="compact"] .poster-title { font-size: 11px; }
 [data-density="wide"] .result-grid { grid-template-columns: repeat(auto-fill, minmax(182px, 1fr)); }
 [data-density="wide"] .rail-item { flex-basis: 188px; }
+
+.search-more { display: flex; justify-content: center; margin-top: 18px; }
+
+.detail-lines { display: flex; flex-wrap: wrap; gap: 7px; }

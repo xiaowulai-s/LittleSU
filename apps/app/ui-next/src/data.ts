@@ -30,6 +30,10 @@ export interface Title {
   vodId?: string;
   sources?: string[];
   episodesList?: Episode[];
+  /** 同一源内的多线路（vod_play_from + vod_play_url 的 $$$ 分组） */
+  playLines?: { name: string; episodes: Episode[] }[];
+  /** 从详情页进入播放页时指定的线路下标 */
+  playLineIndex?: number;
   playUrl?: string;
   progress?: number;
   note?: string;
