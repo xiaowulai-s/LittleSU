@@ -142,7 +142,7 @@ jobs:
 
           # 镜像名与 docker-publish 保持一致：GHCR 按仓库全名转小写，Docker Hub 固定
           GHCR="ghcr.io/${GITHUB_REPOSITORY,,}"
-          HUB="docker.io/xiaowulai-s/littlesu-tv"
+          HUB="docker.io/xiaowulai-s/littlesu-web"
           PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2> /dev/null || true)"
           # 写到 RUNNER_TEMP，不落在工作区（避免本地复现时在仓库里留文件）
           NOTES="${RUNNER_TEMP}/release-notes.md"

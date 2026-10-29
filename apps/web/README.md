@@ -50,7 +50,8 @@ docker compose up -d --build
 ```
 
 推送 `v*` 标签时，GitHub Actions 会自动构建多架构镜像并发布到
-`ghcr.io/xiaowulai-s/littlesu-tv`（配置 Docker Hub 凭据后同步双发布）。
+`ghcr.io/xiaowulai-s/littlesu`；配置 Docker Hub 凭据后同步发布到
+`docker.io/xiaowulai-s/littlesu-web`。
 
 ## 环境变量
 
