@@ -11,6 +11,10 @@ name: web-docker
 # 模拟 npm ci / next build 极慢且不稳（Illegal instruction 崩溃），不再使用。
 # Docker Hub 不重新构建：merge 阶段用 imagetools 把 GHCR 的同一组 digest
 # 复制过去，两个 registry 的多架构镜像 digest 完全一致。
+#
+# 发布失败恢复：若某个架构作业因注册表网络抖动失败，Actions 页面可用
+# "Re-run failed jobs" 重跑；也可在 Actions → web-docker → Run workflow
+# 时选择已发布的 tag 作为 ref，重新生成该版本的镜像标签。
 
 on:
   push:
@@ -76,11 +80,21 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      # ghcr.io/token 偶发超时（v1.6.0 arm64 曾因此失败），登录阶段重试
+      - name: Login to GHCR (retry)
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if echo "$GHCR_TOKEN" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin; then
+              echo "GHCR login succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "GHCR login failed on attempt $attempt; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::GHCR login failed after 5 attempts"
+          exit 1
 
       # tag v2.0.1 → 2.0.1 / 2.0 / latest 三个标签（在 merge job 里统一打）
       - id: meta
@@ -138,20 +152,38 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to GHCR (retry)
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if echo "$GHCR_TOKEN" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin; then
+              echo "GHCR login succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "GHCR login failed on attempt $attempt; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::GHCR login failed after 5 attempts"
+          exit 1
 
       # Docker Hub 双发布：凭据未配置时整段跳过（仅发布 GHCR），不影响既有流程
-      - name: 登录 Docker Hub
+      - name: Login Docker Hub (retry)
         if: env.HAS_DOCKERHUB_CREDS == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: docker.io
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if echo "$DOCKERHUB_PASSWORD" | docker login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin; then
+              echo "Docker Hub login succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "Docker Hub login failed on attempt $attempt; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::Docker Hub login failed after 5 attempts"
+          exit 1
 
       - id: meta
         uses: docker/metadata-action@v5
@@ -183,9 +215,18 @@ jobs:
       - name: 创建并推送多架构 manifest（GHCR）
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}') \
-            $(printf '${{ steps.image.outputs.name }}@sha256:%s ' *)
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}')
+          refs=$(printf '${{ steps.image.outputs.name }}@sha256:%s ' *)
+          for attempt in 1 2 3 4; do
+            if docker buildx imagetools create $tags $refs; then
+              echo "GHCR manifest pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "GHCR manifest push failed on attempt $attempt; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::GHCR manifest push failed after retries"
+          exit 1
 
       # 跨 registry 复制：从 GHCR 的架构 digest 拉取后推到 Docker Hub，
       # 镜像内容（含 manifest digest）与 GHCR 完全一致，无需重新构建
@@ -193,6 +234,15 @@ jobs:
         if: env.HAS_DOCKERHUB_CREDS == 'true'
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta-hub.outputs.json }}') \
-            $(printf '${{ steps.image.outputs.name }}@sha256:%s ' *)
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta-hub.outputs.json }}')
+          refs=$(printf '${{ steps.image.outputs.name }}@sha256:%s ' *)
+          for attempt in 1 2 3 4; do
+            if docker buildx imagetools create $tags $refs; then
+              echo "Docker Hub manifest pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Docker Hub manifest push failed on attempt $attempt; retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          echo "::error::Docker Hub manifest push failed after retries"
+          exit 1
