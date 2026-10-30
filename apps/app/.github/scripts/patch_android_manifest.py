@@ -5,6 +5,7 @@
 """
 
 from pathlib import Path
+import re
 import sys
 
 MANIFEST = Path("src-tauri/gen/android/app/src/main/AndroidManifest.xml")
@@ -45,6 +46,24 @@ def main() -> int:
             print("Cannot find </application> in AndroidManifest", file=sys.stderr)
             return 1
         text = text[:index] + f"        {SERVICE}\n" + text[index:]
+
+    # 后台播放依赖系统画中画，需要给 MainActivity 打开 supportsPictureInPicture。
+    if "supportsPictureInPicture" not in text:
+        for pattern in (
+            r'(<activity[^>]*android:name="\.MainActivity")',
+            r'(<activity[^>]*android:name="[^"]*\.MainActivity")',
+        ):
+            if re.search(pattern, text):
+                text = re.sub(
+                    pattern,
+                    r'\1 android:supportsPictureInPicture="true"',
+                    text,
+                    count=1,
+                )
+                print("Enabled picture-in-picture on MainActivity")
+                break
+        else:
+            print("WARNING: MainActivity activity not found; PiP is unavailable", file=sys.stderr)
 
     MANIFEST.write_text(text, encoding="utf-8")
     print(f"Patched {MANIFEST}")

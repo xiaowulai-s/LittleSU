@@ -2,15 +2,18 @@ package com.xiaowulai.littlesu
 
 import android.Manifest
 import android.app.DownloadManager
+import android.app.PictureInPictureParams
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.util.Rational
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -31,7 +34,6 @@ class MainActivity : TauriActivity() {
   private var receiverRegistered = false
   private var notificationAsked = false
   private var resumeToken = 0
-  private var keepWebViewResumed = false
   private var activityPaused = false
   private val pendingInstalls = ConcurrentHashMap<Long, PendingInstall>()
 
@@ -125,41 +127,53 @@ class MainActivity : TauriActivity() {
 
   override fun onPause() {
     activityPaused = true
+    // 必须调用 super，否则 Android 会抛 SuperNotCalledException。
+    // super 会暂停 WebView，随后在画中画/后台恢复其媒体与定时器。
     val keepPlaying = PlaybackState.active
-    if (keepPlaying) {
-      // 播放中不调用 super.onPause()：WryActivity 会暂停 WebView 与 JS，
-      // 仅靠 onResume 无法可靠恢复音频，因此后台时保持 WebView 处于 resumed 状态。
-      keepWebViewResumed = true
-      val webView = webViewRef
-      if (webView != null) {
-        val token = ++resumeToken
+    super.onPause()
+    if (!keepPlaying) return
+    val webView = webViewRef ?: return
+    val token = ++resumeToken
+    webView.onResume()
+    webView.resumeTimers()
+    for (delay in longArrayOf(400L, 1200L, 2600L)) {
+      webView.postDelayed({
+        if (resumeToken != token) return@postDelayed
         webView.onResume()
         webView.resumeTimers()
-        for (delay in longArrayOf(400L, 1200L, 2600L)) {
-          webView.postDelayed({
-            if (!keepWebViewResumed || resumeToken != token) return@postDelayed
-            webView.onResume()
-            webView.resumeTimers()
-            sendMediaAction("play")
-          }, delay)
-        }
-      }
-      return
+        sendMediaAction("play")
+      }, delay)
     }
-    keepWebViewResumed = false
-    super.onPause()
-  }
-
-  override fun onStop() {
-    if (keepWebViewResumed) return
-    super.onStop()
   }
 
   override fun onResume() {
     super.onResume()
     activityPaused = false
-    keepWebViewResumed = false
     webViewRef?.onResume()
+  }
+
+  /** 退到桌面时进入系统画中画，保持 WebView 可见与媒体播放。 */
+  override fun onUserLeaveHint() {
+    super.onUserLeaveHint()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && PlaybackState.active && !isInPictureInPictureMode) {
+      try {
+        enterPictureInPictureMode(
+          PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+            .build()
+        )
+      } catch (_: Exception) {
+        /* 不支持画中画时保持原有后台行为 */
+      }
+    }
+  }
+
+  override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    if (isInPictureInPictureMode) {
+      webViewRef?.onResume()
+      webViewRef?.resumeTimers()
+    }
   }
 
   override fun onDestroy() {
@@ -180,7 +194,6 @@ class MainActivity : TauriActivity() {
       PlaybackState.active = false
     }
     webViewRef = null
-    keepWebViewResumed = false
     activityPaused = false
     if (instance === this) instance = null
     super.onDestroy()
@@ -190,14 +203,12 @@ class MainActivity : TauriActivity() {
     runOnUiThread {
       if (action == "pause" || action == "stop") {
         resumeToken += 1
-        if (keepWebViewResumed) {
-          keepWebViewResumed = false
+        if (activityPaused) {
           webViewRef?.onPause()
           webViewRef?.pauseTimers()
         }
       } else if (action == "play" && activityPaused) {
-        // 从后台通知点播放时重新保持 WebView 活跃
-        keepWebViewResumed = true
+        // 从画中画/后台通知点播放时恢复 WebView
         webViewRef?.onResume()
         webViewRef?.resumeTimers()
       }
