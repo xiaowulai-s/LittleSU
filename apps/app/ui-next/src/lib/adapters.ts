@@ -14,7 +14,7 @@ export function historyToTitle(record: HistoryRecord): Title {
     name: record.name,
     year: 0,
     rating: 0,
-    type: '剧集',
+    type: record.type || '剧集',
     region: '',
     genres: [],
     synopsis: '',

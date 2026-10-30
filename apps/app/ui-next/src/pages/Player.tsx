@@ -623,6 +623,7 @@ export default function Player() {
     recordHistory({
       key,
       name: title.name,
+      type: title.type,
       poster: title.poster,
       sourceName: title.source,
       sourceKey: title.sourceKey,

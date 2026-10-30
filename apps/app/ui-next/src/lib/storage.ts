@@ -23,6 +23,7 @@ export interface EpisodeProgress {
 export interface HistoryRecord {
   key: string;
   name: string;
+  type?: '电影' | '剧集' | '纪录片' | '综艺' | '动画';
   poster?: string;
   sourceName?: string;
   sourceKey?: string;
