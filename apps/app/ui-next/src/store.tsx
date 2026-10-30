@@ -235,7 +235,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const getTitle = useCallback((key: string | undefined) => findAnyTitle(key, mockTitles), []);
+  const getTitle = useCallback((key: string | undefined) => findAnyTitle(key, isTauri() ? [] : mockTitles), []);
 
   const toast = useCallback((message: string, tone: ToastTone = 'default') => {
     const id = Date.now() + Math.random();

@@ -6,6 +6,7 @@ import { Icon } from '../icons';
 import { useApp } from '../store';
 import { historyToTitle } from '../lib/adapters';
 import { cacheTitle } from '../lib/titleCache';
+import { isTauri } from '../lib/env';
 import { Button, Chip, EmptyState, Poster, ProgressBar } from '../ui';
 
 interface HistoryRow {
@@ -19,6 +20,7 @@ export default function History() {
   const navigate = useNavigate();
   const { history, clearHistory, toast } = useApp();
   const [filter, setFilter] = useState<'全部' | '剧集' | '电影'>('全部');
+  const demo = !isTauri();
 
   const rows = useMemo<HistoryRow[]>(() => {
     if (history.length) {
@@ -29,6 +31,7 @@ export default function History() {
         note: `${record.episodeName || `第 ${(record.episodeIndex ?? 0) + 1} 集`} · ${new Date(record.timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
       }));
     }
+    if (!demo) return [];
     return historyItems
       .map((item) => {
         const title = mockTitles.find((mock) => mock.id === item.titleId);
@@ -37,10 +40,10 @@ export default function History() {
           : null;
       })
       .filter((row): row is HistoryRow => Boolean(row));
-  }, [history]);
+  }, [history, demo]);
 
   const list = rows.filter((row) => filter === '全部' || row.title.type === filter);
-  const usingMock = !history.length;
+  const usingMock = !history.length && demo;
 
   return (
     <div className="history-page">

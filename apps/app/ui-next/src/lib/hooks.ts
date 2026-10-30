@@ -162,7 +162,7 @@ export function useSearch(query: string, scope: SearchScope = 'recommended', lim
       setState({ loading: false, loadingMore: false, results: [], failures: [], real: false, total: targets.length, hasMore: false, loadMore: () => undefined });
       return;
     }
-    if (!isTauri() || !targets.length) {
+    if (!isTauri()) {
       const lower = text.toLowerCase();
       const results = mockTitles.filter((title) =>
         [title.name, title.en, title.type, ...title.genres].some((value) =>
@@ -170,6 +170,10 @@ export function useSearch(query: string, scope: SearchScope = 'recommended', lim
         ),
       );
       setState({ loading: false, loadingMore: false, results, failures: [], real: false, total: targets.length, hasMore: false, loadMore: () => undefined });
+      return;
+    }
+    if (!targets.length) {
+      setState({ loading: false, loadingMore: false, results: [], failures: [], real: true, total: 0, hasMore: false, loadMore: () => undefined });
       return;
     }
 
@@ -343,6 +347,7 @@ export interface FeedState {
   loading: boolean;
   items: Title[];
   real: boolean;
+  error?: string;
 }
 
 function parseLatest(json: unknown, source: SourceDef): Title[] {
@@ -356,33 +361,49 @@ function parseLatest(json: unknown, source: SourceDef): Title[] {
 
 export function useHomeFeed(): FeedState {
   const { activeSources } = useApp();
-  const [state, setState] = useState<FeedState>({ loading: false, items: mockTitles, real: false });
+  const demo = !isTauri();
+  const [state, setState] = useState<FeedState>(() => (
+    demo ? { loading: false, items: mockTitles, real: false } : { loading: true, items: [], real: false }
+  ));
 
   useEffect(() => {
-    if (!isTauri() || !activeSources.length) {
+    if (!isTauri()) {
       setState({ loading: false, items: mockTitles, real: false });
+      return;
+    }
+    if (!activeSources.length) {
+      setState({ loading: false, items: [], real: false, error: '未启用任何数据源' });
       return;
     }
     const picks = activeSources.filter((source) => source.status === 'ok').slice(0, 2);
     if (!picks.length) {
-      setState({ loading: false, items: mockTitles, real: false });
+      setState({ loading: false, items: [], real: false, error: '没有可用的推荐源' });
       return;
     }
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true }));
+    setState({ loading: true, items: [], real: false });
     Promise.all(
       picks.map(async (source) => {
-        const json = await withTimeout(httpJson(latestUrlFor(source)), 15000);
-        return parseLatest(json, source);
+        try {
+          const json = await withTimeout(httpJson(latestUrlFor(source)), 15000);
+          return parseLatest(json, source);
+        } catch {
+          return [];
+        }
       }),
     )
       .then((lists) => {
         if (cancelled) return;
         const merged = dedupeTitles(lists.flat()).filter((title) => title.name);
-        setState({ loading: false, items: merged.length >= 6 ? merged : mockTitles, real: merged.length >= 6 });
+        setState({
+          loading: false,
+          items: merged,
+          real: merged.length > 0,
+          error: merged.length ? undefined : '推荐源暂未返回内容',
+        });
       })
       .catch(() => {
-        if (!cancelled) setState({ loading: false, items: mockTitles, real: false });
+        if (!cancelled) setState({ loading: false, items: [], real: false, error: '推荐内容加载失败' });
       });
 
     return () => {

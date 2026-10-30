@@ -10,6 +10,7 @@ import { useHomeFeed } from '../lib/hooks';
 import { DOUBAN_CATEGORIES, DOUBAN_TABS, fetchDouban } from '../lib/douban';
 import type { DoubanItem, DoubanTabKey } from '../lib/douban';
 import { isTauri } from '../lib/env';
+import { cacheTitle } from '../lib/titleCache';
 import { Button, Chip, EmptyState, Rail, Rating } from '../ui';
 
 export default function Home() {
@@ -44,15 +45,20 @@ export default function Home() {
     };
   }, [doubanTab, doubanCategory, doubanAvailable]);
 
-  const items: Title[] = feed.items.length ? feed.items : mockTitles;
-  const hero: Title = items.find((item) => item.badge) ?? items[0];
+  const demo = !isTauri();
+  const items: Title[] = demo ? (feed.items.length ? feed.items : mockTitles) : feed.items;
+  const hero = items.find((item) => item.badge) ?? items[0];
 
   const continueTitles = history.length
     ? history.slice(0, 5).map((record) => historyToTitle(record))
-    : historyItems.map((item) => mockTitles.find((t) => t.id === item.titleId)).filter((t): t is Title => Boolean(t));
+    : demo
+      ? historyItems.map((item) => mockTitles.find((t) => t.id === item.titleId)).filter((t): t is Title => Boolean(t))
+      : [];
   const continueMap: Record<string, number> = history.length
     ? Object.fromEntries(history.slice(0, 5).map((record) => [record.key, record.progress]))
-    : Object.fromEntries(historyItems.map((item) => [item.titleId, item.progress]));
+    : demo
+      ? Object.fromEntries(historyItems.map((item) => [item.titleId, item.progress]))
+      : {};
   const continueNotes: Record<string, string> = history.length
     ? Object.fromEntries(
         history.slice(0, 5).map((record) => [
@@ -60,18 +66,21 @@ export default function Home() {
           `${record.episodeName || `第 ${(record.episodeIndex ?? 0) + 1} 集`} · ${new Date(record.timestamp).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
         ]),
       )
-    : Object.fromEntries(historyItems.map((item) => [item.titleId, `${item.episode} · ${item.watchedAt}`]));
+    : demo
+      ? Object.fromEntries(historyItems.map((item) => [item.titleId, `${item.episode} · ${item.watchedAt}`]))
+      : {};
 
   const movies = items.filter((item) => item.type === '电影' || item.type === '动画');
   const series = items.filter((item) => item.type === '剧集');
   const topRated = [...items].filter((item) => item.rating > 0).sort((a, b) => b.rating - a.rating).slice(0, 10);
   const favoriteTitles = favorites.slice(0, 10).map((record) => favoriteToTitle(record));
-  const heroKey = hero.key ?? hero.id;
-  const isFavorite = favoriteKeys.has(heroKey);
+  const heroKey = hero ? hero.key ?? hero.id : '';
+  const isFavorite = hero ? favoriteKeys.has(heroKey) : false;
   const enabledCount = Object.values(sourceState).filter(Boolean).length + customApis.length;
 
   return (
     <div className="home-page">
+      {hero ? (
       <section className="hero" style={{ '--h': hero.hue } as CSSProperties}>
         <div className="hero-bg" />
         {hero.poster ? (
@@ -96,7 +105,17 @@ export default function Home() {
           </div>
           <p className="hero-synopsis">{hero.synopsis}</p>
           <div className="hero-actions">
-            <Button variant="primary" size="lg" icon="play" onClick={() => navigate(`/player/${encodeURIComponent(heroKey)}`)}>立即播放</Button>
+            <Button
+              variant="primary"
+              size="lg"
+              icon="play"
+              onClick={() => {
+                cacheTitle(hero);
+                navigate(`/player/${encodeURIComponent(heroKey)}`);
+              }}
+            >
+              立即播放
+            </Button>
             <Button variant="secondary" size="lg" icon="more" onClick={() => openTitle(heroKey)}>查看详情</Button>
             <Button
               variant="ghost"
@@ -131,6 +150,27 @@ export default function Home() {
           </div>
         </div>
       </section>
+      ) : (
+        <section className="hero" style={{ '--h': 210 } as CSSProperties}>
+          <div className="hero-bg" />
+          <div className="hero-glow hero-glow-a" />
+          <div className="hero-glow hero-glow-b" />
+          <div className="hero-content">
+            <div className="hero-kicker">
+              <span className="hero-live-dot" />
+              {feed.loading ? '推荐源' : '数据源'}
+            </div>
+            <h1>{feed.loading ? '正在加载推荐…' : '暂无推荐内容'}</h1>
+            <p className="hero-synopsis">
+              {feed.loading ? '正在从已启用的推荐源获取最新内容。' : feed.error || '请检查数据源，或直接搜索片名。'}
+            </p>
+            <div className="hero-actions">
+              <Button variant="primary" size="lg" icon="search" onClick={() => navigate('/search')}>去搜索</Button>
+              <Button variant="secondary" size="lg" icon="wifi" onClick={() => navigate('/settings?section=sources')}>管理数据源</Button>
+            </div>
+          </div>
+        </section>
+      )}
 
       <button type="button" className="mobile-search-entry" onClick={() => navigate('/search')}>
         <Icon name="search" size={18} />
@@ -242,23 +282,40 @@ export default function Home() {
             <Icon name="chevronRight" size={15} />
           </button>
         </div>
-        <div className="live-preview-grid">
-          {channels.slice(0, 4).map((channel) => (
+        {demo ? (
+          <div className="live-preview-grid">
+            {channels.slice(0, 4).map((channel) => (
+              <button
+                type="button"
+                key={channel.id}
+                className="live-preview-card"
+                style={{ '--h': channel.hue } as CSSProperties}
+                onClick={() => navigate('/live')}
+              >
+                <span className="live-preview-glow" />
+                <span className="live-preview-kicker"><i className="live-dot" />LIVE</span>
+                <strong>{channel.name}</strong>
+                <small>{channel.group} · {channel.source}</small>
+                <span className="live-preview-play"><Icon name="play" size={18} /></span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="live-preview-grid">
             <button
               type="button"
-              key={channel.id}
               className="live-preview-card"
-              style={{ '--h': channel.hue } as CSSProperties}
+              style={{ '--h': 210 } as CSSProperties}
               onClick={() => navigate('/live')}
             >
               <span className="live-preview-glow" />
               <span className="live-preview-kicker"><i className="live-dot" />LIVE</span>
-              <strong>{channel.name}</strong>
-              <small>{channel.group} · {channel.source}</small>
+              <strong>打开直播频道</strong>
+              <small>内置直播源 · 原生取流</small>
               <span className="live-preview-play"><Icon name="play" size={18} /></span>
             </button>
-          ))}
-        </div>
+          </div>
+        )}
       </section>
 
       {feed.loading && <div className="feed-loading"><Icon name="refresh" size={15} /> 正在从推荐源加载最新内容…</div>}

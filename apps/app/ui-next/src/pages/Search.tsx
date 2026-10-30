@@ -8,6 +8,7 @@ import { useApp } from '../store';
 import { useSearch } from '../lib/hooks';
 import type { SearchScope } from '../lib/hooks';
 import { isSourceHealthy, searchableSources } from '../lib/sources';
+import { isTauri } from '../lib/env';
 import { cacheTitle } from '../lib/titleCache';
 import { clearSearchHistory, loadSearchHistory, mergeSearchHistory, saveSearchHistory } from '../lib/searchHistory';
 import { loadSearchView, saveSearchView } from '../lib/storage';
@@ -297,6 +298,13 @@ export default function Search() {
               {filtered.map((title) => <ResultRow key={title.key ?? title.id} title={title} />)}
             </div>
           )
+        ) : total === 0 && isTauri() ? (
+          <EmptyState
+            icon="wifi"
+            title="没有可用的数据源"
+            description="请先在设置中启用数据源，再搜索片名。"
+            action={<Button variant="primary" onClick={() => navigate('/settings?section=sources')}>去设置</Button>}
+          />
         ) : urlQuery ? (
           <EmptyState
             icon="search"

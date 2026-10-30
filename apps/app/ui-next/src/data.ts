@@ -34,6 +34,8 @@ export interface Title {
   playLines?: { name: string; episodes: Episode[] }[];
   /** 从详情页进入播放页时指定的线路下标 */
   playLineIndex?: number;
+  /** 从详情页进入播放页时指定的剧集下标（0 起） */
+  playEpisodeIndex?: number;
   playUrl?: string;
   progress?: number;
   note?: string;

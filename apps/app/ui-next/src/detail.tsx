@@ -8,6 +8,7 @@ import { historyToTitle } from './lib/adapters';
 import { useDetail, useSearch } from './lib/hooks';
 import { cacheTitle } from './lib/titleCache';
 import { CLIENT_RELEASE_URL, shareContent } from './lib/share';
+import { isTauri } from './lib/env';
 import { Button, Chip, Poster, Rating, SectionHeader } from './ui';
 
 function episodesOf(count: number, type: string) {
@@ -63,6 +64,7 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
     return <div className="detail-empty">没有找到这个条目</div>;
   }
 
+  const demo = !isTauri();
   const key = title.key ?? title.id;
   const isFavorite = favoriteKeys.has(key);
   const lines = title.playLines ?? [];
@@ -71,7 +73,9 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
     ? activeLine.episodes.map((episode) => episode.name)
     : title.episodesList?.length
       ? title.episodesList.map((episode) => episode.name)
-      : episodesOf(title.episodes, title.type);
+      : demo
+        ? episodesOf(title.episodes, title.type)
+        : [];
   const currentSourceKey = title.sourceKey && title.vodId ? `${title.sourceKey}:${title.vodId}` : key;
   const sourceOptions = useMemo(() => {
     const map = new Map<string, { key: string; name: string; sourceKey: string }>();
@@ -85,8 +89,8 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
     return Array.from(map.values());
   }, [title, currentSourceKey]);
 
-  const play = () => {
-    cacheTitle({ ...title, playLineIndex: lineIndex });
+  const play = (episodeIndex = 0) => {
+    cacheTitle({ ...title, playLineIndex: lineIndex, playEpisodeIndex: episodeIndex });
     navigate(`/player/${encodeURIComponent(key)}`);
   };
 
@@ -142,7 +146,7 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
             {title.note ? <p className="detail-note">{title.note}</p> : null}
             {error ? <p className="detail-note detail-note-error">详情获取失败：{error}</p> : null}
             <div className="detail-actions">
-              <Button variant="primary" size="md" icon="play" onClick={play}>立即播放</Button>
+              <Button variant="primary" size="md" icon="play" onClick={() => play()}>立即播放</Button>
               <Button
                 variant={isFavorite ? 'secondary' : 'ghost'}
                 size="md"
@@ -225,22 +229,33 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
         <section className="detail-section">
           <SectionHeader
             title="选集"
-            subtitle={`${episodes.length}${title.type === '电影' ? '' : ' 集'} · ${loading ? '加载中' : '自动连播'}`}
+            subtitle={
+              episodes.length
+                ? `${episodes.length}${title.type === '电影' ? '' : ' 集'} · ${loading ? '加载中' : '自动连播'}`
+                : loading
+                  ? '正在加载剧集…'
+                  : error || '暂无可播放剧集'
+            }
           />
-          <div className="episode-grid">
-            {episodes.map((episode, index) => (
-              <button
-                type="button"
-                key={`${episode}-${index}`}
-                className={`episode ${index === 0 ? 'is-active' : ''}`}
-                onClick={play}
-              >
-                {episode}
-              </button>
-            ))}
-          </div>
-          {title.episodes > 30 && (
-            <button type="button" className="text-link" onClick={play}>查看全部 {title.episodes} 集</button>
+          {episodes.length > 0 && (
+            <div className="episode-grid">
+              {episodes.map((episode, index) => (
+                <button
+                  type="button"
+                  key={`${episode}-${index}`}
+                  className={`episode ${index === 0 ? 'is-active' : ''}`}
+                  onClick={() => play(index)}
+                >
+                  {episode}
+                </button>
+              ))}
+            </div>
+          )}
+          {!episodes.length && !loading && (
+            <p className="setting-hint">未获取到剧集信息，请稍后重试或换一个源。</p>
+          )}
+          {episodes.length > 0 && title.episodes > 30 && (
+            <button type="button" className="text-link" onClick={() => play()}>查看全部 {title.episodes} 集</button>
           )}
         </section>
 

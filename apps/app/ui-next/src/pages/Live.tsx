@@ -41,7 +41,8 @@ export default function Live() {
   ], [customLiveSources]);
   const source = sources[sourceIndex] || sources[0];
   const { loading, channels: loaded, error } = useLivePlaylist(source.url, reloadKey);
-  const list = loaded.length ? loaded : fallbackChannels;
+  const demo = !isTauri();
+  const list = loaded.length ? loaded : demo ? fallbackChannels : [];
   const [selectedId, setSelectedId] = useState<string>('');
   const [epgDay, setEpgDay] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -182,7 +183,7 @@ export default function Live() {
   }, [list, group, query, showFavorites, favoriteIds]);
 
   const hue = selected ? hashHue(selected.name) : 210;
-  const usingFallback = !loaded.length;
+  const usingFallback = !loaded.length && demo;
 
   const switchSource = (index: number) => {
     setSourceIndex(index);
@@ -305,7 +306,10 @@ export default function Live() {
         {!loading && usingFallback && (
           <><Icon name="wifi" size={13} /> {error ? `加载失败（${error}），已显示示例频道` : '浏览器预览：显示示例频道，客户端内为真实频道'}</>
         )}
-        {!loading && !usingFallback ? <><Icon name="check" size={13} /> 已加载 {loaded.length} 个频道 · {groups.length - 1} 个分组</> : null}
+        {!loading && !usingFallback && !loaded.length ? (
+          <><Icon name="wifi" size={13} /> {error ? `加载失败（${error}）` : '该源暂无频道，试试其他直播源'}</>
+        ) : null}
+        {!loading && loaded.length ? <><Icon name="check" size={13} /> 已加载 {loaded.length} 个频道 · {groups.length - 1} 个分组</> : null}
       </div>
 
       <div className="live-layout">

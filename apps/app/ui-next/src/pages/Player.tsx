@@ -64,11 +64,13 @@ export default function Player() {
   }, [rawKey, getTitle, history]);
 
   const historyRecord = history.find((item) => item.key === rawKey);
+  const routeEpisodeIndex = baseTitle?.playEpisodeIndex ?? historyRecord?.episodeIndex ?? 0;
   const [activeTitle, setActiveTitle] = useState<Title | undefined>(baseTitle);
   const triedRef = useRef<Set<string>>(new Set());
   const [switching, setSwitching] = useState(false);
   const { title: detailed, loading: detailLoading, error: detailError } = useDetail(activeTitle);
   const title = detailed ?? activeTitle;
+  const demoTitle = !isTauri();
   const baseHasLine = baseTitle?.playLineIndex !== undefined;
   const [lineIndex, setLineIndex] = useState(() => baseTitle?.playLineIndex ?? 0);
   const linePickedRef = useRef(false);
@@ -89,11 +91,11 @@ export default function Player() {
     }
     if (title.episodesList?.length) return title.episodesList;
     if (title.playUrl) return [{ name: '正片', url: title.playUrl }];
-    return mockEpisodes(title);
-  }, [title, lineIndex]);
+    return demoTitle ? mockEpisodes(title) : [];
+  }, [title, lineIndex, demoTitle]);
   const lineName = title?.playLines?.[lineIndex]?.name;
 
-  const [episode, setEpisode] = useState(() => (historyRecord?.episodeIndex ?? 0) + 1);
+  const [episode, setEpisode] = useState(() => routeEpisodeIndex + 1);
   const progressMapRef = useRef<Record<string, EpisodeProgress>>(historyRecord?.episodeProgress ?? {});
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -147,7 +149,7 @@ export default function Player() {
   const current = episodes[episode - 1];
   const sourceUrl = current?.url || '';
   const streamUrl = lineAligned ? playableUrl || (/\.m3u8/i.test(sourceUrl) ? sourceUrl : '') : '';
-  const isMock = !streamUrl && !resolving;
+  const isMock = demoTitle && !streamUrl && !resolving;
   const isFavorite = favoriteKeys.has(rawKey);
   const key = rawKey;
   const rotateLandscape = device === 'android' && cssFullscreen && portrait;
@@ -157,6 +159,14 @@ export default function Player() {
   useEffect(() => {
     if (detailError && !sourceUrl) setVideoError(`详情加载失败：${detailError}`);
   }, [detailError, sourceUrl]);
+
+  useEffect(() => {
+    if (demoTitle || !title || detailLoading || streamUrl || episodes.length) return;
+    const timer = window.setTimeout(() => {
+      if (!streamUrl && !episodes.length) setVideoError('未获取到可播放地址，请返回详情页重试');
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [demoTitle, title, detailLoading, streamUrl, episodes.length]);
   const freshAutoRef = useRef(false);
   const refreshingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -199,7 +209,7 @@ export default function Player() {
     setPlayableUrl('');
     setProgress(0);
     setCurrentTime(0);
-    setEpisode((historyRecord?.episodeIndex ?? 0) + 1);
+    setEpisode(routeEpisodeIndex + 1);
     setLineIndex(baseTitle?.playLineIndex ?? 0);
     linePickedRef.current = false;
     progressMapRef.current = historyRecord?.episodeProgress ?? {};
