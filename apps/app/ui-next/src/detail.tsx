@@ -67,6 +67,7 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
   const demo = !isTauri();
   const key = title.key ?? title.id;
   const isFavorite = favoriteKeys.has(key);
+  const historyRecord = history.find((record) => record.key === key);
   const lines = title.playLines ?? [];
   const activeLine = lines[lineIndex] ?? lines[0];
   const episodes = activeLine?.episodes.length
@@ -239,16 +240,20 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
           />
           {episodes.length > 0 && (
             <div className="episode-grid">
-              {episodes.map((episode, index) => (
-                <button
-                  type="button"
-                  key={`${episode}-${index}`}
-                  className={`episode ${index === 0 ? 'is-active' : ''}`}
-                  onClick={() => play(index)}
-                >
-                  {episode}
-                </button>
-              ))}
+              {episodes.map((episode, index) => {
+                const progress = historyRecord?.episodeProgress?.[episode]?.progress;
+                return (
+                  <button
+                    type="button"
+                    key={`${episode}-${index}`}
+                    className={`episode ${index === 0 ? 'is-active' : ''}`}
+                    onClick={() => play(index)}
+                  >
+                    <span>{episode}</span>
+                    {progress ? <small className="episode-progress">{progress}%</small> : null}
+                  </button>
+                );
+              })}
             </div>
           )}
           {!episodes.length && !loading && (

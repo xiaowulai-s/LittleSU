@@ -100,6 +100,8 @@ export default function Player() {
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const currentTimeRef = useRef(0);
+  currentTimeRef.current = currentTime;
   const [duration, setDuration] = useState(0);
   const [speedIndex, setSpeedIndex] = useState(() => {
     const index = speeds.indexOf(settings.speed);
@@ -621,7 +623,7 @@ export default function Player() {
   const persistHistory = useCallback(() => {
     if (!title || !streamUrl || !lineAligned) return;
     const video = videoRef.current;
-    const position = isMock ? currentTime : video?.currentTime ?? 0;
+    const position = isMock ? currentTimeRef.current : video?.currentTime ?? 0;
     const total = isMock ? (title.type === '电影' ? 7200 : 2700) : video?.duration ?? 0;
     const progress = total > 0 ? Math.min(100, Math.round((position / total) * 100)) : 0;
     const episodeName = current?.name || '正片';
@@ -647,17 +649,32 @@ export default function Player() {
       progress,
       episodeProgress: progressMapRef.current,
     });
-  }, [title, isMock, currentTime, recordHistory, key, streamUrl, current?.name, episode, lineAligned]);
+  }, [title, isMock, recordHistory, key, streamUrl, current?.name, episode, lineAligned]);
 
+  /* 只在真正从播放变为暂停时保存一次；不要在初次加载/切集时写 0 进度 */
+  const wasPlayingRef = useRef(false);
   useEffect(() => {
+    if (playing) {
+      wasPlayingRef.current = true;
+      return;
+    }
+    if (!wasPlayingRef.current) return;
+    wasPlayingRef.current = false;
     persistHistory();
-  }, [streamUrl, persistHistory]);
+  }, [playing, persistHistory]);
 
   useEffect(() => {
     if (!playing) return;
     const timer = window.setInterval(persistHistory, 10000);
     return () => window.clearInterval(timer);
   }, [playing, persistHistory]);
+
+  const persistRef = useRef(persistHistory);
+  persistRef.current = persistHistory;
+  useEffect(() => () => {
+    const video = videoRef.current;
+    if (video && Number.isFinite(video.duration) && video.duration > 0) persistRef.current();
+  }, []);
 
   useEffect(() => {
     if (!isMock || !playing) return;

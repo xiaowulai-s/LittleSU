@@ -1384,7 +1384,13 @@ h1, h2, h3, p { margin: 0; }
 .source-option .status-dot { position: absolute; top: 12px; right: 12px; }
 .episode-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 7px; }
 .episode {
-  height: 35px;
+  min-height: 35px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 2px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -1394,6 +1400,8 @@ h1, h2, h3, p { margin: 0; }
 }
 .episode:hover { border-color: var(--faint); color: var(--text); }
 .episode.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.episode-progress { font-size: 7.5px; font-weight: 500; color: var(--muted); line-height: 1; }
+.episode.is-active .episode-progress { color: var(--accent); }
 .text-link { border: 0; background: transparent; color: var(--accent); font-size: 11.5px; cursor: pointer; padding: 8px 0 0; }
 .detail-related { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .detail-empty { padding: 60px; text-align: center; color: var(--muted); }

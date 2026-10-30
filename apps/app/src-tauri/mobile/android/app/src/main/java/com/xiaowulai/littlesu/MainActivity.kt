@@ -31,6 +31,8 @@ class MainActivity : TauriActivity() {
   private var receiverRegistered = false
   private var notificationAsked = false
   private var resumeToken = 0
+  private var keepWebViewResumed = false
+  private var activityPaused = false
   private val pendingInstalls = ConcurrentHashMap<Long, PendingInstall>()
 
   private data class PendingInstall(val url: String, val file: File)
@@ -122,23 +124,42 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onPause() {
-    // 必须在 super.onPause() 前取状态：WebView 暂停会触发视频 onPause 并清掉 active
+    activityPaused = true
     val keepPlaying = PlaybackState.active
-    super.onPause()
-    if (!keepPlaying) return
-    val webView = webViewRef ?: return
-    val token = ++resumeToken
-    // 保持 WebView 的媒体与定时器存活，并主动恢复被 ROM/WebView 暂停的播放
-    webView.onResume()
-    webView.resumeTimers()
-    for (delay in longArrayOf(400L, 1200L, 2600L)) {
-      webView.postDelayed({
-        if (resumeToken != token) return@postDelayed
+    if (keepPlaying) {
+      // 播放中不调用 super.onPause()：WryActivity 会暂停 WebView 与 JS，
+      // 仅靠 onResume 无法可靠恢复音频，因此后台时保持 WebView 处于 resumed 状态。
+      keepWebViewResumed = true
+      val webView = webViewRef
+      if (webView != null) {
+        val token = ++resumeToken
         webView.onResume()
         webView.resumeTimers()
-        sendMediaAction("play")
-      }, delay)
+        for (delay in longArrayOf(400L, 1200L, 2600L)) {
+          webView.postDelayed({
+            if (!keepWebViewResumed || resumeToken != token) return@postDelayed
+            webView.onResume()
+            webView.resumeTimers()
+            sendMediaAction("play")
+          }, delay)
+        }
+      }
+      return
     }
+    keepWebViewResumed = false
+    super.onPause()
+  }
+
+  override fun onStop() {
+    if (keepWebViewResumed) return
+    super.onStop()
+  }
+
+  override fun onResume() {
+    super.onResume()
+    activityPaused = false
+    keepWebViewResumed = false
+    webViewRef?.onResume()
   }
 
   override fun onDestroy() {
@@ -159,13 +180,27 @@ class MainActivity : TauriActivity() {
       PlaybackState.active = false
     }
     webViewRef = null
+    keepWebViewResumed = false
+    activityPaused = false
     if (instance === this) instance = null
     super.onDestroy()
   }
 
   fun sendMediaAction(action: String, positionMs: Long = -1L) {
     runOnUiThread {
-      if (action == "pause" || action == "stop") resumeToken += 1
+      if (action == "pause" || action == "stop") {
+        resumeToken += 1
+        if (keepWebViewResumed) {
+          keepWebViewResumed = false
+          webViewRef?.onPause()
+          webViewRef?.pauseTimers()
+        }
+      } else if (action == "play" && activityPaused) {
+        // 从后台通知点播放时重新保持 WebView 活跃
+        keepWebViewResumed = true
+        webViewRef?.onResume()
+        webViewRef?.resumeTimers()
+      }
       val detail = if (positionMs >= 0L) {
         "{action:'$action',position:$positionMs}"
       } else {
