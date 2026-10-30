@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('androidNative bridge', () => {
   it('falls back when no native bridge exists', () => {
     expect(installAndroidApk('https://example.com/app.apk')).toBe(false);
-    expect(() => updateAndroidPlayback('片名', '第 1 集', true)).not.toThrow();
+    expect(() => updateAndroidPlayback('片名', '第 1 集', true, 30, 2700)).not.toThrow();
     expect(() => stopAndroidPlayback()).not.toThrow();
   });
 
@@ -19,8 +19,8 @@ describe('androidNative bridge', () => {
     vi.stubGlobal('window', { LsuNative: bridge });
     expect(installAndroidApk('https://example.com/app.apk')).toBe(true);
     expect(bridge.installApk).toHaveBeenCalledWith('https://example.com/app.apk');
-    updateAndroidPlayback('片名', '第 1 集', true);
-    expect(bridge.updatePlayback).toHaveBeenCalledWith('片名', '第 1 集', true);
+    updateAndroidPlayback('片名', '第 1 集', true, 30, 2700);
+    expect(bridge.updatePlayback).toHaveBeenCalledWith('片名', '第 1 集', true, 30, 2700);
     stopAndroidPlayback();
     expect(bridge.stopPlayback).toHaveBeenCalled();
   });

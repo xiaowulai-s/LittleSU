@@ -1,6 +1,12 @@
 interface LsuNativeBridge {
   installApk?: (url: string) => boolean;
-  updatePlayback?: (title: string, subtitle: string, playing: boolean) => void;
+  updatePlayback?: (
+    title: string,
+    subtitle: string,
+    playing: boolean,
+    positionSec: number,
+    durationSec: number,
+  ) => void;
   stopPlayback?: () => void;
 }
 
@@ -20,10 +26,16 @@ export function installAndroidApk(url: string): boolean {
   }
 }
 
-/** 同步当前剧集与播放状态到 Android 播放通知（无桥时静默忽略）。 */
-export function updateAndroidPlayback(title: string, subtitle: string, playing: boolean): void {
+/** 同步当前剧集、播放状态与进度到 Android 播放通知（无桥时静默忽略）。 */
+export function updateAndroidPlayback(
+  title: string,
+  subtitle: string,
+  playing: boolean,
+  positionSec = 0,
+  durationSec = 0,
+): void {
   try {
-    bridge()?.updatePlayback?.(title, subtitle, playing);
+    bridge()?.updatePlayback?.(title, subtitle, playing, positionSec, durationSec);
   } catch {
     /* 原生桥不可用时忽略 */
   }

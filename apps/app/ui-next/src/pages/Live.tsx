@@ -222,10 +222,19 @@ export default function Live() {
     }
   };
 
-  /* Android 前台服务：直播后台播放与系统播放通知 */
+  /* Android 前台服务：直播后台播放、播放通知与进度 */
   useEffect(() => {
     if (device !== 'android' || !isTauri() || !selected) return;
-    updateAndroidPlayback(selected.name, selected.group || source.name, playing);
+    const send = () => {
+      const video = videoRef.current;
+      const position = video && Number.isFinite(video.currentTime) ? video.currentTime : 0;
+      const duration = video && Number.isFinite(video.duration) ? video.duration : 0;
+      updateAndroidPlayback(selected.name, selected.group || source.name, playing, position, duration);
+    };
+    send();
+    if (!playing) return;
+    const timer = window.setInterval(send, 2000);
+    return () => window.clearInterval(timer);
   }, [device, selected, playing, source.name]);
 
   useEffect(() => {
@@ -236,7 +245,9 @@ export default function Live() {
   useEffect(() => {
     if (device !== 'android') return;
     const onNativeMedia = (event: Event) => {
-      const action = (event as CustomEvent<string>).detail;
+      const detail = (event as CustomEvent<string | { action?: string; position?: number }>).detail;
+      const action = typeof detail === 'string' ? detail : detail?.action;
+      const position = typeof detail === 'object' ? detail?.position : undefined;
       const video = videoRef.current;
       if (action === 'play') {
         void video?.play();
@@ -249,6 +260,8 @@ export default function Live() {
         } else {
           setPlaying((value) => !value);
         }
+      } else if (action === 'seek' && typeof position === 'number' && Number.isFinite(position)) {
+        if (video) video.currentTime = Math.max(0, position / 1000);
       } else if (action === 'stop') {
         video?.pause();
         stopAndroidPlayback();

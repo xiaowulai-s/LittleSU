@@ -27,6 +27,7 @@ class MainActivity : TauriActivity() {
   private var webViewRef: WebView? = null
   private var receiverRegistered = false
   private var notificationAsked = false
+  private var resumeToken = 0
 
   private val downloadReceiver = object : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -79,11 +80,22 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onPause() {
+    // 必须在 super.onPause() 前取状态：WebView 暂停会触发视频 onPause 并清掉 active
+    val keepPlaying = PlaybackState.active
     super.onPause()
-    // 前台服务播放期间保持 WebView 的媒体与定时器存活，切后台/锁屏不中断
-    if (PlaybackState.active) {
-      webViewRef?.onResume()
-      webViewRef?.resumeTimers()
+    if (!keepPlaying) return
+    val webView = webViewRef ?: return
+    val token = ++resumeToken
+    // 保持 WebView 的媒体与定时器存活，并主动恢复被 ROM/WebView 暂停的播放
+    webView.onResume()
+    webView.resumeTimers()
+    for (delay in longArrayOf(400L, 1200L, 2600L)) {
+      webView.postDelayed({
+        if (resumeToken != token) return@postDelayed
+        webView.onResume()
+        webView.resumeTimers()
+        sendMediaAction("play")
+      }, delay)
     }
   }
 
@@ -109,12 +121,22 @@ class MainActivity : TauriActivity() {
     super.onDestroy()
   }
 
-  fun sendMediaAction(action: String) {
+  fun sendMediaAction(action: String, positionMs: Long = -1L) {
     runOnUiThread {
-      webViewRef?.evaluateJavascript(
-        "window.dispatchEvent(new CustomEvent('lsu:native-media',{detail:'$action'}))",
-        null
-      )
+      if (action == "pause" || action == "stop") resumeToken += 1
+      val detail = if (positionMs >= 0L) {
+        "{action:'$action',position:$positionMs}"
+      } else {
+        "{action:'$action'}"
+      }
+      try {
+        webViewRef?.evaluateJavascript(
+          "window.dispatchEvent(new CustomEvent('lsu:native-media',{detail:$detail}))",
+          null
+        )
+      } catch (_: Exception) {
+        /* WebView 已销毁时忽略 */
+      }
     }
   }
 
@@ -151,11 +173,27 @@ class MainActivity : TauriActivity() {
     }
 
     @JavascriptInterface
-    fun updatePlayback(title: String, subtitle: String, playing: Boolean) {
+    fun updatePlayback(
+      title: String,
+      subtitle: String,
+      playing: Boolean,
+      positionSec: Double,
+      durationSec: Double,
+    ) {
       PlaybackState.title = title
       PlaybackState.subtitle = subtitle
       PlaybackState.playing = playing
       PlaybackState.active = playing
+      PlaybackState.positionMs = if (positionSec.isFinite() && positionSec > 0) {
+        (positionSec * 1000).toLong()
+      } else {
+        0L
+      }
+      PlaybackState.durationMs = if (durationSec.isFinite() && durationSec > 0) {
+        (durationSec * 1000).toLong()
+      } else {
+        0L
+      }
       if (playing) ensureNotificationPermission()
       if (!playing && !PlaybackState.serviceRunning) return
       val intent = Intent(this@MainActivity, PlaybackService::class.java).apply {
@@ -163,6 +201,8 @@ class MainActivity : TauriActivity() {
         putExtra(PlaybackService.EXTRA_TITLE, title)
         putExtra(PlaybackService.EXTRA_SUBTITLE, subtitle)
         putExtra(PlaybackService.EXTRA_PLAYING, playing)
+        putExtra(PlaybackService.EXTRA_POSITION_MS, PlaybackState.positionMs)
+        putExtra(PlaybackService.EXTRA_DURATION_MS, PlaybackState.durationMs)
       }
       try {
         if (PlaybackState.serviceRunning) {

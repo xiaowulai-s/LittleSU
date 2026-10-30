@@ -18,6 +18,8 @@ object PlaybackState {
   @Volatile var playing = false
   @Volatile var title = ""
   @Volatile var subtitle = ""
+  @Volatile var positionMs = 0L
+  @Volatile var durationMs = 0L
   @Volatile var serviceRunning = false
 }
 
@@ -31,10 +33,13 @@ class PlaybackService : Service() {
     const val EXTRA_TITLE = "title"
     const val EXTRA_SUBTITLE = "subtitle"
     const val EXTRA_PLAYING = "playing"
+    const val EXTRA_POSITION_MS = "positionMs"
+    const val EXTRA_DURATION_MS = "durationMs"
   }
 
   private var session: MediaSession? = null
   private var wakeLock: PowerManager.WakeLock? = null
+  private var foregroundStarted = false
 
   override fun onCreate() {
     super.onCreate()
@@ -54,6 +59,12 @@ class PlaybackService : Service() {
         override fun onPause() {
           setPlaying(false)
           sendAction("pause")
+          refresh()
+        }
+
+        override fun onSeekTo(pos: Long) {
+          PlaybackState.positionMs = pos.coerceAtLeast(0L)
+          sendAction("seek", PlaybackState.positionMs)
           refresh()
         }
 
@@ -83,6 +94,12 @@ class PlaybackService : Service() {
         if (intent != null && intent.hasExtra(EXTRA_PLAYING)) {
           PlaybackState.playing = intent.getBooleanExtra(EXTRA_PLAYING, PlaybackState.playing)
         }
+        if (intent != null && intent.hasExtra(EXTRA_POSITION_MS)) {
+          PlaybackState.positionMs = intent.getLongExtra(EXTRA_POSITION_MS, PlaybackState.positionMs)
+        }
+        if (intent != null && intent.hasExtra(EXTRA_DURATION_MS)) {
+          PlaybackState.durationMs = intent.getLongExtra(EXTRA_DURATION_MS, PlaybackState.durationMs)
+        }
         PlaybackState.active = PlaybackState.playing
       }
     }
@@ -102,6 +119,7 @@ class PlaybackService : Service() {
   }
 
   private fun startForegroundCompat() {
+    if (foregroundStarted) return
     val notification = buildNotification()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       startForeground(
@@ -112,6 +130,7 @@ class PlaybackService : Service() {
     } else {
       startForeground(NOTIFICATION_ID, notification)
     }
+    foregroundStarted = true
   }
 
   private fun createChannel() {
@@ -191,22 +210,34 @@ class PlaybackService : Service() {
   private fun updateNotification() {
     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     manager.notify(NOTIFICATION_ID, buildNotification())
+    session?.setMetadata(
+      android.media.MediaMetadata.Builder()
+        .putString(
+          android.media.MediaMetadata.METADATA_KEY_TITLE,
+          PlaybackState.title.ifBlank { "LittleSU TV" }
+        )
+        .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, PlaybackState.subtitle)
+        .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, PlaybackState.durationMs)
+        .build()
+    )
+    var actions = android.media.session.PlaybackState.ACTION_PLAY or
+      android.media.session.PlaybackState.ACTION_PAUSE or
+      android.media.session.PlaybackState.ACTION_PLAY_PAUSE or
+      android.media.session.PlaybackState.ACTION_STOP
+    if (PlaybackState.durationMs > 0L) {
+      actions = actions or android.media.session.PlaybackState.ACTION_SEEK_TO
+    }
     session?.setPlaybackState(
       android.media.session.PlaybackState.Builder()
-        .setActions(
-          android.media.session.PlaybackState.ACTION_PLAY or
-            android.media.session.PlaybackState.ACTION_PAUSE or
-            android.media.session.PlaybackState.ACTION_PLAY_PAUSE or
-            android.media.session.PlaybackState.ACTION_STOP
-        )
+        .setActions(actions)
         .setState(
           if (PlaybackState.playing) {
             android.media.session.PlaybackState.STATE_PLAYING
           } else {
             android.media.session.PlaybackState.STATE_PAUSED
           },
-          android.media.session.PlaybackState.PLAYBACK_POSITION_UNKNOWN,
-          1f
+          PlaybackState.positionMs,
+          if (PlaybackState.playing) 1f else 0f
         )
         .build()
     )
@@ -229,8 +260,8 @@ class PlaybackService : Service() {
     }
   }
 
-  private fun sendAction(action: String) {
-    MainActivity.instance?.sendMediaAction(action)
+  private fun sendAction(action: String, positionMs: Long = -1L) {
+    MainActivity.instance?.sendMediaAction(action, positionMs)
   }
 
   override fun onTaskRemoved(rootIntent: Intent?) {
@@ -241,6 +272,7 @@ class PlaybackService : Service() {
   override fun onDestroy() {
     PlaybackState.serviceRunning = false
     PlaybackState.active = false
+    foregroundStarted = false
     wakeLock?.let { if (it.isHeld) it.release() }
     wakeLock = null
     session?.isActive = false
