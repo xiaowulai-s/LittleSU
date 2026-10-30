@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTitle, dedupeTitles, parsePlayLines, parsePlayUrl, parseSearchPage, parseSearchResponse, qualityFrom } from './cms';
+import { applyDetail, buildTitle, dedupeTitles, parsePlayLines, parsePlayUrl, parseSearchPage, parseSearchResponse, qualityFrom } from './cms';
 import type { SourceDef } from './sources';
 
 const source: SourceDef = {
@@ -83,5 +83,16 @@ describe('cms 解析', () => {
     expect(qualityFrom('4K 高清')).toBe('4K');
     expect(qualityFrom('1080P')).toBe('1080P');
     expect(qualityFrom('完结')).toBe('HD');
+  });
+
+  it('默认选择直链 m3u8 最多的线路', () => {
+    const base = buildTitle({ vod_id: 1, vod_name: '测试', type_name: '剧集' }, source, source.name)!;
+    const title = applyDetail(base, {
+      vod_play_from: '分享$$$直链',
+      vod_play_url: '第1集$https://v.example/share/abc$$$第1集$https://cdn.example/1.m3u8',
+    });
+    expect(title.playLineIndex).toBe(1);
+    expect(title.playLines?.[1].name).toBe('直链');
+    expect(title.episodesList?.[0].url).toBe('https://cdn.example/1.m3u8');
   });
 });

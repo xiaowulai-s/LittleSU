@@ -44,36 +44,40 @@ class PlaybackService : Service() {
   override fun onCreate() {
     super.onCreate()
     PlaybackState.serviceRunning = true
-    createChannel()
-    session = MediaSession(this, "LittleSUPlayback").apply {
-      setFlags(
-        MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
-      )
-      setCallback(object : MediaSession.Callback() {
-        override fun onPlay() {
-          setPlaying(true)
-          sendAction("play")
-          refresh()
-        }
+    try {
+      createChannel()
+      session = MediaSession(this, "LittleSUPlayback").apply {
+        setFlags(
+          MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
+        )
+        setCallback(object : MediaSession.Callback() {
+          override fun onPlay() {
+            setPlaying(true)
+            sendAction("play")
+            refresh()
+          }
 
-        override fun onPause() {
-          setPlaying(false)
-          sendAction("pause")
-          refresh()
-        }
+          override fun onPause() {
+            setPlaying(false)
+            sendAction("pause")
+            refresh()
+          }
 
-        override fun onSeekTo(pos: Long) {
-          PlaybackState.positionMs = pos.coerceAtLeast(0L)
-          sendAction("seek", PlaybackState.positionMs)
-          refresh()
-        }
+          override fun onSeekTo(pos: Long) {
+            PlaybackState.positionMs = pos.coerceAtLeast(0L)
+            sendAction("seek", PlaybackState.positionMs)
+            refresh()
+          }
 
-        override fun onStop() {
-          sendAction("stop")
-          stopSelf()
-        }
-      })
-      isActive = true
+          override fun onStop() {
+            sendAction("stop")
+            stopSelf()
+          }
+        })
+        isActive = true
+      }
+    } catch (_: Exception) {
+      /* 媒体通知不可用时退回无通知的前台服务，播放本身不受影响 */
     }
   }
 
@@ -113,9 +117,23 @@ class PlaybackService : Service() {
   }
 
   private fun refresh() {
-    startForegroundCompat()
-    updateNotification()
-    updateWakeLock()
+    try {
+      startForegroundCompat()
+    } catch (_: Exception) {
+      // 无法进入前台时停止服务，避免拖垮 WebView 播放
+      stopSelf()
+      return
+    }
+    try {
+      updateNotification()
+    } catch (_: Exception) {
+      /* 通知刷新失败不影响播放 */
+    }
+    try {
+      updateWakeLock()
+    } catch (_: Exception) {
+      /* 常亮不可用时忽略 */
+    }
   }
 
   private fun startForegroundCompat() {

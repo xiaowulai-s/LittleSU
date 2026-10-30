@@ -29,6 +29,17 @@ function AppRoutes() {
   );
 }
 
+function ToastStack() {
+  const { toasts } = useApp();
+  return (
+    <div className="toast-stack" aria-live="polite">
+      {toasts.map((item) => (
+        <div key={item.id} className={`toast toast-${item.tone}`}>{item.message}</div>
+      ))}
+    </div>
+  );
+}
+
 function UpdatePrompt() {
   const { updateInfo, updateInstalling, updateProgress, installUpdate } = useApp();
   const [dismissed, setDismissed] = useState(false);
@@ -154,6 +165,7 @@ function Prototype() {
           </AndroidShell>
         )}
         <UpdatePrompt />
+        <ToastStack />
       </div>
     );
   }
@@ -183,6 +195,7 @@ function Prototype() {
         </div>
         <PreviewDock />
         <UpdatePrompt />
+        <ToastStack />
       </div>
     </div>
   );

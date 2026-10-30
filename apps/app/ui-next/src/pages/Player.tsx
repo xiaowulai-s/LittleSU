@@ -67,10 +67,18 @@ export default function Player() {
   const [activeTitle, setActiveTitle] = useState<Title | undefined>(baseTitle);
   const triedRef = useRef<Set<string>>(new Set());
   const [switching, setSwitching] = useState(false);
-  const { title: detailed, loading: detailLoading } = useDetail(activeTitle);
+  const { title: detailed, loading: detailLoading, error: detailError } = useDetail(activeTitle);
   const title = detailed ?? activeTitle;
-
+  const baseHasLine = baseTitle?.playLineIndex !== undefined;
   const [lineIndex, setLineIndex] = useState(() => baseTitle?.playLineIndex ?? 0);
+
+  useEffect(() => {
+    // 从历史/收藏进入时没有线路信息，详情加载后采用解析出的默认线路
+    if (!baseHasLine && detailed?.playLineIndex !== undefined) {
+      setLineIndex(detailed.playLineIndex);
+    }
+  }, [baseHasLine, detailed?.key, detailed?.playLineIndex]);
+
   const episodes = useMemo<Episode[]>(() => {
     if (!title) return [];
     if (title.playLines?.length) {
@@ -142,6 +150,10 @@ export default function Player() {
   const rotateLandscape = device === 'android' && cssFullscreen && portrait;
   const sourceUrlRef = useRef(sourceUrl);
   sourceUrlRef.current = sourceUrl;
+
+  useEffect(() => {
+    if (detailError && !sourceUrl) setVideoError(`详情加载失败：${detailError}`);
+  }, [detailError, sourceUrl]);
   const freshAutoRef = useRef(false);
   const refreshingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -196,9 +208,32 @@ export default function Player() {
     freshAutoRef.current = false;
   }, [title?.key, lineIndex, episode]);
 
+  /* 同一源内线路的失败记录，换集/换源后重置 */
+  const triedLinesRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    triedLinesRef.current = new Set();
+  }, [title?.key, episode]);
+
   /* ---------- 播放失败自动换源 ---------- */
   const tryNextVariant = useCallback((reason: string): boolean => {
     if (!title || !settings.autoSwitchSource) return false;
+    const lines = title.playLines ?? [];
+    if (lines.length > 1) {
+      triedLinesRef.current.add(lineIndex);
+      const nextLine = lines.findIndex((line, index) => index !== lineIndex && !triedLinesRef.current.has(index));
+      if (nextLine >= 0) {
+        const line = lines[nextLine];
+        setLineIndex(nextLine);
+        setEpisode((value) => Math.min(value, line.episodes.length || value));
+        setPlayableUrl('');
+        setProgress(0);
+        setCurrentTime(0);
+        setVideoError(`播放失败（${reason}），正在切换到线路 ${line.name}…`);
+        setReloadKey((value) => value + 1);
+        toast(`已切换到线路 ${line.name}`, 'success');
+        return true;
+      }
+    }
     const currentKey = title.key ?? title.id;
     const next = uniqueVariants.find((variant) => {
       const variantKey = `${variant.sourceKey}:${variant.vodId}`;
@@ -218,6 +253,8 @@ export default function Player() {
       sourceKey: next.sourceKey,
       vodId: next.vodId,
       episodesList: undefined,
+      playLines: undefined,
+      playLineIndex: undefined,
       playUrl: undefined,
     });
     setEpisode(1);
@@ -228,7 +265,7 @@ export default function Player() {
     toast(`已自动切换到 ${next.sourceName}`, 'success');
     window.setTimeout(() => setSwitching(false), 1500);
     return true;
-  }, [title, uniqueVariants, settings.autoSwitchSource, toast]);
+  }, [title, uniqueVariants, settings.autoSwitchSource, toast, lineIndex]);
 
   /**
    * 重新拉取详情换取新的播放地址。签名 m3u8 过期时同一个 URL 永远失败，
@@ -544,13 +581,20 @@ export default function Player() {
     const video = videoRef.current;
     if (!video || !streamUrl || !settings.remember) return;
     const episodeName = current?.name || '正片';
+    const saved = progressMapRef.current[episodeName];
+    // 已看完的剧集从头播放，避免一打开就跳到大结局
+    if (saved && saved.progress >= 98) return;
     const sameEpisode = !historyRecord?.episodeName || historyRecord.episodeName === episodeName;
     const fallback = sameEpisode ? historyRecord?.position ?? 0 : 0;
     const resumeAt = resumePositionFor(progressMapRef.current, episodeName, fallback);
     if (resumeAt <= 0) return;
     const onLoaded = () => {
-      video.currentTime = Math.min(resumeAt, video.duration || resumeAt);
-      toast(`已恢复到 ${formatTime(resumeAt)}`, 'success');
+      const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+      if (duration > 0 && resumeAt >= duration - 30) return;
+      const target = duration > 0 ? Math.min(resumeAt, Math.max(0, duration - 15)) : resumeAt;
+      if (target <= 10) return;
+      video.currentTime = target;
+      toast(`已恢复到 ${formatTime(target)}`, 'success');
     };
     video.addEventListener('loadedmetadata', onLoaded, { once: true });
     return () => video.removeEventListener('loadedmetadata', onLoaded);
@@ -895,16 +939,18 @@ export default function Player() {
   };
 
   const switchLine = (index: number) => {
-    if (!title?.playLines?.[index]) return;
+    const line = title?.playLines?.[index];
+    if (!line) return;
     persistHistory();
+    // 保留当前集数，只换线路；新线路集数更少时取最后一集
+    setEpisode((value) => Math.min(value, line.episodes.length || value));
     setLineIndex(index);
-    setEpisode(1);
     setCurrentTime(0);
     setProgress(0);
     setPlaying(true);
     setVideoError(null);
     setSheetOpen(false);
-    toast(`已切换到线路 ${title.playLines[index].name}`, 'success');
+    toast(`已切换到线路 ${line.name}`, 'success');
   };
 
   const switchToVariant = (variant: { sourceKey: string; sourceName: string; vodId: string }) => {
@@ -920,6 +966,8 @@ export default function Player() {
       sourceKey: variant.sourceKey,
       vodId: variant.vodId,
       episodesList: undefined,
+      playLines: undefined,
+      playLineIndex: undefined,
       playUrl: undefined,
     });
     setEpisode(1);

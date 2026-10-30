@@ -455,16 +455,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return (
-    <AppContext.Provider value={value}>
-      {children}
-      <div className="toast-stack" aria-live="polite">
-        {toasts.map((item) => (
-          <div key={item.id} className={`toast toast-${item.tone}`}>{item.message}</div>
-        ))}
-      </div>
-    </AppContext.Provider>
-  );
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useApp(): AppState {

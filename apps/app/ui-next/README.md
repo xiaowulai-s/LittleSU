@@ -55,7 +55,7 @@ npm run tauri build
 
 - 源选择、历史、收藏、主题、播放偏好全部落 `localStorage`，兼容旧版 `selectedAPIs` / `customAPIs` / `viewingHistory` 键
 - 搜索：调用 Tauri 命令 `search_videos` 并行聚合已启用源，跨源去重、失败源提示、分页加载更多；单源超时（8–30 秒）与失败重试（0–2 次）可在设置中配置；浏览器内自动回退示例数据
-- 详情：按 `ids` 拉取 CMS 详情，解析剧集与简介；`vod_play_from` 多线路按 `$$$` 拆分，详情与播放器均可切换线路；HTML 详情源做 m3u8 兜底
+- 详情：按 `ids` 拉取 CMS 详情，解析剧集与简介；`vod_play_from` 多线路按 `$$$` 拆分，默认优先直链 m3u8 线路，详情与播放器均可切换线路（播放失败自动回退），HTML 详情源做 m3u8 兜底
 - 播放：内置 hls.js + `fetch_text_native` / `fetch_bytes_native` 自定义 loader，绕过 WebView CORS；分享页解析、音量/静音、±10 秒、倍速、清晰度切换、失败重试（签名地址过期时自动回源重解析）、屏幕常亮、系统媒体卡片、下一集、页面内全屏（Android）、画中画、锁屏、亮度/音量手势、画面比例、字幕/音轨、全屏选集、广告过滤、逐集进度/倍速/比例记忆、自动连播与失败自动换源；Android 前台服务支持点播/直播后台播放，媒体通知显示进度并支持拖动
 - 桌面更新：设置页与启动检查均可下载并安装更新（Tauri updater），安装完成后自动重启；Android 通过原生桥下载 APK 并拉起系统安装器（v1.4.1 起 macOS 也进入 `latest.json`，并启用 `requireSignedVersion` 绑定签名版本）
 - 源测活：真实搜索测活、延迟/失败展示并持久化；测活失败的已启用源会自动停用

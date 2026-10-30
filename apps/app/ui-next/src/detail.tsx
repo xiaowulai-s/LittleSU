@@ -55,6 +55,10 @@ export function DetailView({ titleKey, inDrawer = false }: { titleKey: string; i
   );
   const [lineIndex, setLineIndex] = useState(0);
 
+  useEffect(() => {
+    setLineIndex(title?.playLineIndex ?? 0);
+  }, [title?.key, title?.playLineIndex]);
+
   if (!title) {
     return <div className="detail-empty">没有找到这个条目</div>;
   }

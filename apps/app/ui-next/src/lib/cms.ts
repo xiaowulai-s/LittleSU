@@ -198,7 +198,19 @@ export function applyDetail(title: Title, item: CmsItem): Title {
   const playRaw = str(item, ['vod_play_url', 'play_url', 'vod_url']);
   const fromRaw = str(item, ['vod_play_from', 'play_from']);
   const lines = parsePlayLines(playRaw, fromRaw);
-  const episodes = lines[0]?.episodes ?? [];
+  // 优先选择直链 m3u8 最多的线路，避免默认落到需要二次解析的分享页线路
+  let defaultLine = 0;
+  if (lines.length > 1) {
+    let best = -1;
+    lines.forEach((line, index) => {
+      const score = line.episodes.filter((episode) => /\.m3u8/i.test(episode.url)).length;
+      if (score > best) {
+        best = score;
+        defaultLine = index;
+      }
+    });
+  }
+  const episodes = lines[defaultLine]?.episodes ?? [];
   const content = str(item, ['vod_content', 'vod_blurb', 'content']);
   const poster = str(item, ['vod_pic', 'pic']);
   const actor = str(item, ['vod_actor', 'actor']);
@@ -219,6 +231,7 @@ export function applyDetail(title: Title, item: CmsItem): Title {
     episodes: episodes.length || title.episodes,
     episodesList: episodes,
     playLines: lines.length ? lines : undefined,
+    playLineIndex: lines.length ? defaultLine : undefined,
     playUrl: episodes[0]?.url,
     genres: typeName ? typeName.split(/[,/、]/).filter(Boolean).slice(0, 3) : title.genres,
     note: actor ? `主演：${actor}` : director ? `导演：${director}` : title.note,

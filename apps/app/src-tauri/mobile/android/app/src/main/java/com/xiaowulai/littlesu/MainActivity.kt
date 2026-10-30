@@ -187,7 +187,11 @@ class MainActivity : TauriActivity() {
     if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
     notificationAsked = true
     runOnUiThread {
-      requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { }
+      try {
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS)) { }
+      } catch (_: Exception) {
+        /* 权限弹窗不可用时不影响播放 */
+      }
     }
   }
 
