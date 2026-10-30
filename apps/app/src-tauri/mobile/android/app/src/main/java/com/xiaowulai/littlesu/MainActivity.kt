@@ -156,20 +156,29 @@ class MainActivity : TauriActivity() {
   override fun onUserLeaveHint() {
     super.onUserLeaveHint()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && PlaybackState.active && !isInPictureInPictureMode) {
-      try {
+      // 先让前端切到“只显示视频”的 PiP 布局，避免进入时闪一下完整 UI
+      webViewRef?.evaluateJavascript("document.body.classList.add('lsu-pip')", null)
+      val entered = try {
         enterPictureInPictureMode(
           PictureInPictureParams.Builder()
             .setAspectRatio(Rational(16, 9))
             .build()
         )
       } catch (_: Exception) {
-        /* 不支持画中画时保持原有后台行为 */
+        false
+      }
+      if (!entered) {
+        webViewRef?.evaluateJavascript("document.body.classList.remove('lsu-pip')", null)
       }
     }
   }
 
   override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
     super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    webViewRef?.evaluateJavascript(
+      "document.body.classList.toggle('lsu-pip', $isInPictureInPictureMode);",
+      null
+    )
     if (isInPictureInPictureMode) {
       webViewRef?.onResume()
       webViewRef?.resumeTimers()

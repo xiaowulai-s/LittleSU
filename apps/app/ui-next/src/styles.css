@@ -3079,3 +3079,40 @@ h1, h2, h3, p { margin: 0; }
 .search-more { display: flex; justify-content: center; margin-top: 18px; }
 
 .detail-lines { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* ---------- Android 画中画：只显示视频 ---------- */
+
+body.lsu-pip { background: #000 !important; overflow: hidden !important; }
+body.lsu-pip .prototype-root > * { visibility: hidden !important; }
+body.lsu-pip .player-page,
+body.lsu-pip .live-page { transform: none !important; }
+body.lsu-pip .video-surface,
+body.lsu-pip .live-screen {
+  visibility: visible !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  transform: none !important;
+  z-index: 2147483647 !important;
+  background: #000 !important;
+}
+body.lsu-pip .video-surface > *,
+body.lsu-pip .live-screen > * { visibility: hidden !important; }
+body.lsu-pip .video-surface video,
+body.lsu-pip .live-screen video {
+  visibility: visible !important;
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  z-index: 2147483647 !important;
+}

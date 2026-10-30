@@ -64,3 +64,4 @@
 32. v1.10.6 修复 macOS 打包流水线：macOS 只构建 `.app`（跳过 Tauri 内置 DMG），用 `hdiutil` 生成 DMG；移除 create-dmg；构建/签名/上传加重试，codesign hardened runtime 失败时回退。应用功能同 v1.10.5。
 33. v1.10.7 修复真机失败项：Android 后台播放改为播放中跳过 WryActivity.onPause/onStop，避免 WebView 被暂停，通知暂停/停止主动暂停、后台播放重新激活；逐集进度修复定时器被 timeupdate 重置与切集串进度，暂停/退出补存，详情选集显示每集百分比。该版因跳过 super 生命周期有 `SuperNotCalledException` 风险，被 v1.10.8 取代。
 34. v1.10.8 修正后台播放与逐集进度：按 Home 自动进入 16:9 系统画中画保持 WebView 播放，保留通知控制，撤回 v1.10.7 的 super 跳过方案；进度保存定时器稳定化、切集不串进度、暂停/退出补存、详情选集显示每集百分比。
+35. v1.10.9 画中画只显示视频：进入 PiP 时给 body 加 `lsu-pip`，隐藏全部 UI/文字，只保留视频铺满 16:9 窗口；退出自动恢复；点播/直播共用，进入前先应用布局避免闪烁。
