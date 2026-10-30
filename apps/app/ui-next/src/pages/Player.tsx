@@ -71,10 +71,13 @@ export default function Player() {
   const title = detailed ?? activeTitle;
   const baseHasLine = baseTitle?.playLineIndex !== undefined;
   const [lineIndex, setLineIndex] = useState(() => baseTitle?.playLineIndex ?? 0);
+  const linePickedRef = useRef(false);
+  const lineAligned = baseHasLine || linePickedRef.current || !detailed
+    || detailed.playLineIndex === undefined || lineIndex === detailed.playLineIndex;
 
   useEffect(() => {
     // 从历史/收藏进入时没有线路信息，详情加载后采用解析出的默认线路
-    if (!baseHasLine && detailed?.playLineIndex !== undefined) {
+    if (!baseHasLine && !linePickedRef.current && detailed?.playLineIndex !== undefined) {
       setLineIndex(detailed.playLineIndex);
     }
   }, [baseHasLine, detailed?.key, detailed?.playLineIndex]);
@@ -143,7 +146,7 @@ export default function Player() {
 
   const current = episodes[episode - 1];
   const sourceUrl = current?.url || '';
-  const streamUrl = playableUrl || (/\.m3u8/i.test(sourceUrl) ? sourceUrl : '');
+  const streamUrl = lineAligned ? playableUrl || (/\.m3u8/i.test(sourceUrl) ? sourceUrl : '') : '';
   const isMock = !streamUrl && !resolving;
   const isFavorite = favoriteKeys.has(rawKey);
   const key = rawKey;
@@ -198,6 +201,7 @@ export default function Player() {
     setCurrentTime(0);
     setEpisode((historyRecord?.episodeIndex ?? 0) + 1);
     setLineIndex(baseTitle?.playLineIndex ?? 0);
+    linePickedRef.current = false;
     progressMapRef.current = historyRecord?.episodeProgress ?? {};
     preferredHeightRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,6 +227,7 @@ export default function Player() {
       const nextLine = lines.findIndex((line, index) => index !== lineIndex && !triedLinesRef.current.has(index));
       if (nextLine >= 0) {
         const line = lines[nextLine];
+        linePickedRef.current = true;
         setLineIndex(nextLine);
         setEpisode((value) => Math.min(value, line.episodes.length || value));
         setPlayableUrl('');
@@ -240,6 +245,7 @@ export default function Player() {
       return variantKey !== currentKey && !triedRef.current.has(variantKey);
     });
     if (!next) return false;
+    linePickedRef.current = false;
     const nextKey = `${next.sourceKey}:${next.vodId}`;
     triedRef.current.add(currentKey);
     triedRef.current.add(nextKey);
@@ -287,6 +293,7 @@ export default function Player() {
       });
       if (!picked) return false;
       if (requireChange && picked.url === expectedUrl) return false;
+      linePickedRef.current = true;
       setActiveTitle({ ...fresh, playLineIndex: picked.lineIndex });
       setLineIndex(picked.lineIndex);
       setEpisode(picked.episodeIndex + 1);
@@ -314,6 +321,7 @@ export default function Player() {
     let cancelled = false;
     setPlayableUrl('');
     if (!sourceUrl) return;
+    if (!lineAligned) return;
     if (/\.m3u8/i.test(sourceUrl)) {
       setPlayableUrl(sourceUrl);
       return;
@@ -345,7 +353,7 @@ export default function Player() {
       .catch(() => { if (!cancelled) setPlayableUrl(sourceUrl); })
       .finally(() => { if (!cancelled) setResolving(false); });
     return () => { cancelled = true; };
-  }, [sourceUrl]);
+  }, [sourceUrl, lineAligned]);
 
   /* ---------- HLS 初始化（含广告过滤） ---------- */
   useEffect(() => {
@@ -579,7 +587,7 @@ export default function Player() {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !streamUrl || !settings.remember) return;
+    if (!video || !streamUrl || !settings.remember || !lineAligned) return;
     const episodeName = current?.name || '正片';
     const saved = progressMapRef.current[episodeName];
     // 已看完的剧集从头播放，避免一打开就跳到大结局
@@ -598,10 +606,10 @@ export default function Player() {
     };
     video.addEventListener('loadedmetadata', onLoaded, { once: true });
     return () => video.removeEventListener('loadedmetadata', onLoaded);
-  }, [streamUrl, settings.remember, current?.name, historyRecord?.episodeName, historyRecord?.position, toast]);
+  }, [streamUrl, settings.remember, current?.name, historyRecord?.episodeName, historyRecord?.position, toast, lineAligned]);
 
   const persistHistory = useCallback(() => {
-    if (!title) return;
+    if (!title || !streamUrl || !lineAligned) return;
     const video = videoRef.current;
     const position = isMock ? currentTime : video?.currentTime ?? 0;
     const total = isMock ? (title.type === '电影' ? 7200 : 2700) : video?.duration ?? 0;
@@ -628,7 +636,7 @@ export default function Player() {
       progress,
       episodeProgress: progressMapRef.current,
     });
-  }, [title, isMock, currentTime, recordHistory, key, streamUrl, current?.name, episode]);
+  }, [title, isMock, currentTime, recordHistory, key, streamUrl, current?.name, episode, lineAligned]);
 
   useEffect(() => {
     persistHistory();
@@ -941,6 +949,7 @@ export default function Player() {
   const switchLine = (index: number) => {
     const line = title?.playLines?.[index];
     if (!line) return;
+    linePickedRef.current = true;
     persistHistory();
     // 保留当前集数，只换线路；新线路集数更少时取最后一集
     setEpisode((value) => Math.min(value, line.episodes.length || value));
@@ -956,6 +965,7 @@ export default function Player() {
   const switchToVariant = (variant: { sourceKey: string; sourceName: string; vodId: string }) => {
     if (!title) return;
     persistHistory();
+    linePickedRef.current = false;
     const nextKey = `${variant.sourceKey}:${variant.vodId}`;
     triedRef.current.add(title.key ?? title.id);
     setActiveTitle({
