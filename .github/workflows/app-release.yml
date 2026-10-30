@@ -475,22 +475,27 @@ jobs:
           fi
         shell: bash
 
-      - name: Override MainActivity for immersive mode
+      - name: Override Android Kotlin sources
         run: |
-          echo "Overriding MainActivity.kt for immersive mode..."
-          SOURCE_ACTIVITY_PATH="src-tauri/mobile/android/app/src/main/java/com/xiaowulai/littlesu/MainActivity.kt"
-          DEST_ACTIVITY_DIR="src-tauri/gen/android/app/src/main/java/com/xiaowulai/littlesu"
-          
-          if [ -f "$SOURCE_ACTIVITY_PATH" ]; then
-            echo "Source MainActivity.kt found. Copying to $DEST_ACTIVITY_DIR"
-            mkdir -p "$DEST_ACTIVITY_DIR"
-            cp "$SOURCE_ACTIVITY_PATH" "$DEST_ACTIVITY_DIR/"
-            echo "MainActivity.kt override complete. Verifying copied file:"
-            ls -l "$DEST_ACTIVITY_DIR/MainActivity.kt"
+          echo "Overriding Android Kotlin sources (immersive, media bridge, playback service)..."
+          SOURCE_JAVA_DIR="src-tauri/mobile/android/app/src/main/java/com/xiaowulai/littlesu"
+          DEST_JAVA_DIR="src-tauri/gen/android/app/src/main/java/com/xiaowulai/littlesu"
+
+          if [ -d "$SOURCE_JAVA_DIR" ]; then
+            echo "Source Kotlin directory found. Copying to $DEST_JAVA_DIR"
+            mkdir -p "$DEST_JAVA_DIR"
+            rsync -av --copy-links "$SOURCE_JAVA_DIR/" "$DEST_JAVA_DIR/"
+            echo "Kotlin override complete. Verifying copied files:"
+            ls -l "$DEST_JAVA_DIR"
           else
-            echo "::error:: Source MainActivity.kt for override not found at $SOURCE_ACTIVITY_PATH"
+            echo "::error:: Source Kotlin directory for override not found at $SOURCE_JAVA_DIR"
             exit 1
           fi
+        shell: bash
+
+      - name: Patch Android manifest for playback and APK install
+        run: |
+          python3 .github/scripts/patch_android_manifest.py
         shell: bash
 
       - name: Decode Keystore for apksigner

@@ -34,6 +34,7 @@ import { testSource } from './lib/health';
 import type { SourceHealth } from './lib/health';
 import { isTauri } from './lib/env';
 import { openExternal } from './lib/window';
+import { installAndroidApk } from './lib/androidNative';
 import { cacheTitle, findAnyTitle } from './lib/titleCache';
 import { checkForUpdate } from './lib/update';
 import type { UpdateInfo } from './lib/update';
@@ -254,7 +255,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (/android/i.test(navigator.userAgent)) {
-      await openExternal(updateInfo?.androidUrl || updateInfo?.url || 'https://github.com/xiaowulai-s/LittleSU/releases/latest');
+      const url = updateInfo?.androidUrl || updateInfo?.url || 'https://github.com/xiaowulai-s/LittleSU/releases/latest';
+      if (installAndroidApk(url)) {
+        toast('已开始下载安装包，完成后按系统提示安装', 'success');
+        return;
+      }
+      await openExternal(url);
       return;
     }
     if (updateInstalling) return;

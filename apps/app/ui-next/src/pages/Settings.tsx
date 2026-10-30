@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import type { FormEvent, ReactNode } from 'react';
 import { SOURCES, customDefs } from '../lib/sources';
 import type { SourceDef } from '../lib/sources';
+import { installAndroidApk } from '../lib/androidNative';
 import { clearAppCaches } from '../lib/cache';
 import { SEARCH_RETRY_OPTIONS, SEARCH_TIMEOUT_OPTIONS } from '../lib/sourceSearch';
 import { KEYS } from '../lib/storage';
@@ -705,11 +706,16 @@ export default function Settings() {
                       variant="primary"
                       disabled={updateInstalling}
                       onClick={() => {
-                        if (ANDROID) void openExternal(updateInfo.androidUrl || updateInfo.url);
-                        else void installUpdate();
+                        if (ANDROID) {
+                          const url = updateInfo.androidUrl || updateInfo.url;
+                          if (installAndroidApk(url)) toast('已开始下载安装包，完成后按系统提示安装', 'success');
+                          else void openExternal(url);
+                        } else {
+                          void installUpdate();
+                        }
                       }}
                     >
-                      {ANDROID ? '前往下载' : updateInstalling ? `更新中 ${updateProgress ?? 0}%` : '下载并安装'}
+                      {updateInstalling ? `更新中 ${updateProgress ?? 0}%` : '下载并安装'}
                     </Button>
                   </div>
                 )}

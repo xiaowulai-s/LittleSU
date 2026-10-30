@@ -13,6 +13,13 @@ export const KEYS = {
   searchView: 'lsu.searchView',
 } as const;
 
+export interface EpisodeProgress {
+  position: number;
+  duration: number;
+  progress: number;
+  at: number;
+}
+
 export interface HistoryRecord {
   key: string;
   name: string;
@@ -27,6 +34,8 @@ export interface HistoryRecord {
   duration: number;
   timestamp: number;
   progress: number;
+  /** 按剧集名保存的进度，切换剧集后各自恢复 */
+  episodeProgress?: Record<string, EpisodeProgress>;
 }
 
 export type FavoriteRecord = Pick<

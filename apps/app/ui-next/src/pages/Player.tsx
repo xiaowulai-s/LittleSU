@@ -6,6 +6,7 @@ import type { Episode, Title } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
 import { historyToTitle } from '../lib/adapters';
+import { stopAndroidPlayback, updateAndroidPlayback } from '../lib/androidNative';
 import { refreshTitleDetail, useDetail } from '../lib/hooks';
 import { isExpiredStreamError, selectRefreshedEpisode } from '../lib/playbackRefresh';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
@@ -15,6 +16,8 @@ import { useWakeLock } from '../lib/wakeLock';
 import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
 import { CLIENT_RELEASE_URL, shareContent } from '../lib/share';
 import { normalizeSubtitle } from '../lib/subtitles';
+import { mergeEpisodeProgress, resumePositionFor } from '../lib/progress';
+import type { EpisodeProgress } from '../lib/storage';
 import { httpText, isTauri } from '../lib/env';
 import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
@@ -80,6 +83,7 @@ export default function Player() {
   const lineName = title?.playLines?.[lineIndex]?.name;
 
   const [episode, setEpisode] = useState(() => (historyRecord?.episodeIndex ?? 0) + 1);
+  const progressMapRef = useRef<Record<string, EpisodeProgress>>(historyRecord?.episodeProgress ?? {});
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -182,6 +186,7 @@ export default function Player() {
     setCurrentTime(0);
     setEpisode((historyRecord?.episodeIndex ?? 0) + 1);
     setLineIndex(baseTitle?.playLineIndex ?? 0);
+    progressMapRef.current = historyRecord?.episodeProgress ?? {};
     preferredHeightRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawKey]);
@@ -464,6 +469,17 @@ export default function Player() {
     setMediaPlaybackState(playing ? 'playing' : 'paused');
   }, [playing]);
 
+  /* Android 前台服务：后台播放与系统播放通知 */
+  useEffect(() => {
+    if (device !== 'android' || !isTauri() || !title || isMock) return;
+    updateAndroidPlayback(title.name, current?.name || '', playing);
+  }, [device, title, current?.name, playing, isMock]);
+
+  useEffect(() => {
+    if (device !== 'android' || !isTauri()) return;
+    return () => stopAndroidPlayback();
+  }, [device]);
+
   useEffect(() => {
     setPipSupported(typeof document !== 'undefined' && document.pictureInPictureEnabled === true);
   }, []);
@@ -518,21 +534,31 @@ export default function Player() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !streamUrl || !settings.remember) return;
+    const episodeName = current?.name || '正片';
+    const sameEpisode = !historyRecord?.episodeName || historyRecord.episodeName === episodeName;
+    const fallback = sameEpisode ? historyRecord?.position ?? 0 : 0;
+    const resumeAt = resumePositionFor(progressMapRef.current, episodeName, fallback);
+    if (resumeAt <= 0) return;
     const onLoaded = () => {
-      if (historyRecord?.position && historyRecord.position > 10) {
-        video.currentTime = historyRecord.position;
-        toast(`已恢复到 ${formatTime(historyRecord.position)}`, 'success');
-      }
+      video.currentTime = Math.min(resumeAt, video.duration || resumeAt);
+      toast(`已恢复到 ${formatTime(resumeAt)}`, 'success');
     };
     video.addEventListener('loadedmetadata', onLoaded, { once: true });
     return () => video.removeEventListener('loadedmetadata', onLoaded);
-  }, [streamUrl, settings.remember, historyRecord?.position, toast]);
+  }, [streamUrl, settings.remember, current?.name, historyRecord?.episodeName, historyRecord?.position, toast]);
 
   const persistHistory = useCallback(() => {
     if (!title) return;
     const video = videoRef.current;
     const position = isMock ? currentTime : video?.currentTime ?? 0;
     const total = isMock ? (title.type === '电影' ? 7200 : 2700) : video?.duration ?? 0;
+    const progress = total > 0 ? Math.min(100, Math.round((position / total) * 100)) : 0;
+    const episodeName = current?.name || '正片';
+    progressMapRef.current = mergeEpisodeProgress(progressMapRef.current, episodeName, {
+      position,
+      duration: total,
+      progress,
+    });
     recordHistory({
       key,
       name: title.name,
@@ -541,12 +567,13 @@ export default function Player() {
       sourceKey: title.sourceKey,
       vodId: title.vodId,
       playUrl: streamUrl || title.playUrl,
-      episodeName: current?.name,
+      episodeName,
       episodeIndex: episode - 1,
       position,
       duration: total,
       timestamp: Date.now(),
-      progress: total > 0 ? Math.min(100, Math.round((position / total) * 100)) : 0,
+      progress,
+      episodeProgress: progressMapRef.current,
     });
   }, [title, isMock, currentTime, recordHistory, key, streamUrl, current?.name, episode]);
 
@@ -665,6 +692,32 @@ export default function Player() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isMock, fullscreen, locked, settings.volume, updateSettings]);
+
+  /* 系统播放通知的暂停/继续/停止动作 */
+  useEffect(() => {
+    if (device !== 'android') return;
+    const onNativeMedia = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      const video = videoRef.current;
+      if (action === 'play') {
+        void video?.play();
+      } else if (action === 'pause') {
+        video?.pause();
+      } else if (action === 'toggle') {
+        if (!isMock && video) {
+          if (video.paused) void video.play();
+          else video.pause();
+        } else {
+          setPlaying((value) => !value);
+        }
+      } else if (action === 'stop') {
+        video?.pause();
+        stopAndroidPlayback();
+      }
+    };
+    window.addEventListener('lsu:native-media', onNativeMedia);
+    return () => window.removeEventListener('lsu:native-media', onNativeMedia);
+  }, [device, isMock]);
 
   if (!title) {
     return (
@@ -820,6 +873,7 @@ export default function Player() {
   };
 
   const switchEpisode = (index: number) => {
+    persistHistory();
     setEpisode(index + 1);
     setCurrentTime(0);
     setProgress(0);
@@ -829,6 +883,7 @@ export default function Player() {
 
   const switchLine = (index: number) => {
     if (!title?.playLines?.[index]) return;
+    persistHistory();
     setLineIndex(index);
     setEpisode(1);
     setCurrentTime(0);
@@ -841,6 +896,7 @@ export default function Player() {
 
   const switchToVariant = (variant: { sourceKey: string; sourceName: string; vodId: string }) => {
     if (!title) return;
+    persistHistory();
     const nextKey = `${variant.sourceKey}:${variant.vodId}`;
     triedRef.current.add(title.key ?? title.id);
     setActiveTitle({

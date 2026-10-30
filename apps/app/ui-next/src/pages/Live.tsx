@@ -14,6 +14,8 @@ import { loadLiveFavorites, mergeLiveFavorite, saveLiveFavorites } from '../lib/
 import type { LiveFavorite } from '../lib/liveFavorites';
 import { useLivePlaylist, useEpg } from '../lib/hooks';
 import { currentProgram, epgDate, nextProgram } from '../lib/epg';
+import { stopAndroidPlayback, updateAndroidPlayback } from '../lib/androidNative';
+import { isTauri } from '../lib/env';
 import { Button, Chip } from '../ui';
 
 const fallbackChannels: LiveChannel[] = mockChannelData.map((channel) => ({
@@ -219,6 +221,42 @@ export default function Live() {
       setPlaying((value) => !value);
     }
   };
+
+  /* Android 前台服务：直播后台播放与系统播放通知 */
+  useEffect(() => {
+    if (device !== 'android' || !isTauri() || !selected) return;
+    updateAndroidPlayback(selected.name, selected.group || source.name, playing);
+  }, [device, selected, playing, source.name]);
+
+  useEffect(() => {
+    if (device !== 'android' || !isTauri()) return;
+    return () => stopAndroidPlayback();
+  }, [device]);
+
+  useEffect(() => {
+    if (device !== 'android') return;
+    const onNativeMedia = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      const video = videoRef.current;
+      if (action === 'play') {
+        void video?.play();
+      } else if (action === 'pause') {
+        video?.pause();
+      } else if (action === 'toggle') {
+        if (video && selected?.url) {
+          if (video.paused) void video.play();
+          else video.pause();
+        } else {
+          setPlaying((value) => !value);
+        }
+      } else if (action === 'stop') {
+        video?.pause();
+        stopAndroidPlayback();
+      }
+    };
+    window.addEventListener('lsu:native-media', onNativeMedia);
+    return () => window.removeEventListener('lsu:native-media', onNativeMedia);
+  }, [device, selected?.url]);
 
   return (
     <div className={`live-page ${cssFullscreen ? 'is-css-fullscreen' : ''} ${rotateLandscape ? 'is-landscape-rotate' : ''}`}>
