@@ -34,7 +34,7 @@ import { testSource } from './lib/health';
 import type { SourceHealth } from './lib/health';
 import { isTauri } from './lib/env';
 import { openExternal } from './lib/window';
-import { installAndroidApk } from './lib/androidNative';
+import { installAndroidApk, isApkUrl } from './lib/androidNative';
 import { cacheTitle, findAnyTitle } from './lib/titleCache';
 import { checkForUpdate } from './lib/update';
 import type { UpdateInfo } from './lib/update';
@@ -255,12 +255,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (/android/i.test(navigator.userAgent)) {
-      const url = updateInfo?.androidUrl || updateInfo?.url || 'https://github.com/xiaowulai-s/LittleSU/releases/latest';
-      if (installAndroidApk(url)) {
+      // 发布早期可能还没有 APK 资产，重新检查一次，避免把 Release 网页当安装包下载
+      const info = updateInfo?.androidUrl && isApkUrl(updateInfo.androidUrl) ? updateInfo : await checkUpdate();
+      const apkUrl = info?.androidUrl;
+      if (apkUrl && isApkUrl(apkUrl) && installAndroidApk(apkUrl)) {
         toast('已开始下载安装包，完成后按系统提示安装', 'success');
         return;
       }
-      await openExternal(url);
+      toast('安装包尚未就绪，已打开下载页', 'warning');
+      await openExternal(apkUrl || info?.url || updateInfo?.url || 'https://github.com/xiaowulai-s/LittleSU/releases/latest');
       return;
     }
     if (updateInstalling) return;
@@ -297,7 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setUpdateInstalling(false);
     }
-  }, [toast, updateInfo, updateInstalling]);
+  }, [toast, updateInfo, updateInstalling, checkUpdate]);
 
   const checkSources = useCallback(async () => {
     if (!isTauri()) {

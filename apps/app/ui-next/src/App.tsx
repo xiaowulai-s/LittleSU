@@ -3,7 +3,6 @@ import { Route, Routes, useLocation, useNavigate, useNavigationType } from 'reac
 import { AndroidShell, PreviewDock, WindowsShell } from './layout';
 import { AppProvider, useApp } from './store';
 import { isTauri } from './lib/env';
-import { openExternal } from './lib/window';
 import { Icon } from './icons';
 import { DetailDrawer, DetailPage } from './detail';
 import Home from './pages/Home';
@@ -42,7 +41,7 @@ function UpdatePrompt() {
         <strong>发现新版本 v{updateInfo.latest}</strong>
         <p>
           {android
-            ? '前往 Releases 下载新 APK'
+            ? '下载 APK 后按系统提示安装'
             : updateInstalling
               ? `正在下载并安装 ${updateProgress ?? 0}%`
               : '可立即下载并安装，完成后自动重启'}
@@ -56,12 +55,9 @@ function UpdatePrompt() {
           type="button"
           className="primary"
           disabled={updateInstalling}
-          onClick={() => {
-            if (android) void openExternal(updateInfo.androidUrl || updateInfo.url);
-            else void installUpdate();
-          }}
+          onClick={() => { void installUpdate(); }}
         >
-          {android ? '前往下载' : updateInstalling ? '更新中…' : '立即更新'}
+          {android ? '下载并安装' : updateInstalling ? '更新中…' : '立即更新'}
         </button>
         <button type="button" onClick={() => setDismissed(true)} aria-label="稍后提醒">×</button>
       </div>

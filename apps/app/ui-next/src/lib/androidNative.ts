@@ -16,9 +16,19 @@ function bridge(): LsuNativeBridge | null {
   return value && typeof value === 'object' ? value : null;
 }
 
+/** 只接受真正的 APK 地址，避免把 Release 网页当安装包下载。 */
+export function isApkUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  try {
+    return /\.apk$/i.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** 用 Android 原生下载器拉取 APK 并在完成后拉起系统安装器。 */
 export function installAndroidApk(url: string): boolean {
-  if (!url) return false;
+  if (!isApkUrl(url)) return false;
   try {
     return bridge()?.installApk?.(url) === true;
   } catch {

@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import type { FormEvent, ReactNode } from 'react';
 import { SOURCES, customDefs } from '../lib/sources';
 import type { SourceDef } from '../lib/sources';
-import { installAndroidApk } from '../lib/androidNative';
 import { clearAppCaches } from '../lib/cache';
 import { SEARCH_RETRY_OPTIONS, SEARCH_TIMEOUT_OPTIONS } from '../lib/sourceSearch';
 import { KEYS } from '../lib/storage';
@@ -27,7 +26,6 @@ const sections: { key: Section; label: string; icon: IconName }[] = [
 const recommended = SOURCES.filter((source) => source.status === 'ok');
 const backup = SOURCES.filter((source) => source.status === 'backup');
 const experimental = SOURCES.filter((source) => source.status === 'experimental');
-const ANDROID = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
 
 function SettingCard({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -705,15 +703,7 @@ export default function Settings() {
                       size="sm"
                       variant="primary"
                       disabled={updateInstalling}
-                      onClick={() => {
-                        if (ANDROID) {
-                          const url = updateInfo.androidUrl || updateInfo.url;
-                          if (installAndroidApk(url)) toast('已开始下载安装包，完成后按系统提示安装', 'success');
-                          else void openExternal(url);
-                        } else {
-                          void installUpdate();
-                        }
-                      }}
+                      onClick={() => { void installUpdate(); }}
                     >
                       {updateInstalling ? `更新中 ${updateProgress ?? 0}%` : '下载并安装'}
                     </Button>

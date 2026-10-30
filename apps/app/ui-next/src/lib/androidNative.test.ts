@@ -1,7 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installAndroidApk, stopAndroidPlayback, updateAndroidPlayback } from './androidNative';
+import { installAndroidApk, isApkUrl, stopAndroidPlayback, updateAndroidPlayback } from './androidNative';
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe('isApkUrl', () => {
+  it('accepts APK asset links and rejects release pages', () => {
+    expect(isApkUrl('https://github.com/x/x/releases/download/v1/app.apk')).toBe(true);
+    expect(isApkUrl('https://github.com/x/x/releases/download/v1/app.APK?x=1')).toBe(true);
+    expect(isApkUrl('https://github.com/x/x/releases/tag/v1')).toBe(false);
+    expect(isApkUrl(undefined)).toBe(false);
+  });
+});
 
 describe('androidNative bridge', () => {
   it('falls back when no native bridge exists', () => {

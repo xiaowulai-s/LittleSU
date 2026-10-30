@@ -14,9 +14,12 @@ import android.os.Environment
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : TauriActivity() {
   companion object {
@@ -28,23 +31,62 @@ class MainActivity : TauriActivity() {
   private var receiverRegistered = false
   private var notificationAsked = false
   private var resumeToken = 0
+  private val pendingInstalls = ConcurrentHashMap<Long, PendingInstall>()
+
+  private data class PendingInstall(val url: String, val file: File)
 
   private val downloadReceiver = object : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
       if (intent?.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
       val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
       if (id < 0) return
+      val pending = pendingInstalls.remove(id) ?: return
       val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-      val uri = manager.getUriForDownloadedFile(id) ?: return
-      val install = Intent(Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, "application/vnd.android.package-archive")
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+      if (isDownloadSuccessful(manager, id) && isApkFile(pending.file)) {
+        val uri = manager.getUriForDownloadedFile(id)
+        if (uri != null && openInstaller(uri)) return
       }
-      try {
-        startActivity(install)
-      } catch (_: Exception) {
-        /* 无法拉起安装器时保留系统下载通知 */
-      }
+      pending.file.delete()
+      openInBrowser(pending.url, "安装包下载失败或文件无效，已打开浏览器下载页")
+    }
+  }
+
+  private fun isDownloadSuccessful(manager: DownloadManager, id: Long): Boolean {
+    val cursor = manager.query(DownloadManager.Query().setFilterById(id)) ?: return false
+    cursor.use {
+      if (!it.moveToFirst()) return false
+      return it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)) == DownloadManager.STATUS_SUCCESSFUL
+    }
+  }
+
+  private fun isApkFile(file: File): Boolean {
+    if (!file.exists() || file.length() < 1024L) return false
+    return try {
+      packageManager.getPackageArchiveInfo(file.absolutePath, 0)?.packageName == packageName
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  private fun openInstaller(uri: Uri): Boolean {
+    val install = Intent(Intent.ACTION_VIEW).apply {
+      setDataAndType(uri, "application/vnd.android.package-archive")
+      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return try {
+      startActivity(install)
+      true
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  private fun openInBrowser(url: String, message: String) {
+    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    try {
+      startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: Exception) {
+      /* 没有浏览器时保留 Toast 提示 */
     }
   }
 
@@ -152,9 +194,16 @@ class MainActivity : TauriActivity() {
   inner class NativeBridge {
     @JavascriptInterface
     fun installApk(url: String): Boolean {
-      if (!url.startsWith("https://")) return false
+      val parsed = Uri.parse(url)
+      val isApk = parsed.scheme == "https" && parsed.path?.endsWith(".apk", ignoreCase = true) == true
+      if (!isApk) return false
       return try {
-        val request = DownloadManager.Request(Uri.parse(url))
+        val dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return false
+        dir.listFiles()
+          ?.filter { it.name.startsWith("littlesu-update-") }
+          ?.forEach { it.delete() }
+        val file = File(dir, "littlesu-update-${System.currentTimeMillis()}.apk")
+        val request = DownloadManager.Request(parsed)
           .setTitle("LittleSU TV 更新")
           .setDescription("正在下载安装包…")
           .setMimeType("application/vnd.android.package-archive")
@@ -162,10 +211,18 @@ class MainActivity : TauriActivity() {
           .setDestinationInExternalFilesDir(
             this@MainActivity,
             Environment.DIRECTORY_DOWNLOADS,
-            "littlesu-update.apk"
+            file.name
+          )
+          .setAllowedOverMetered(true)
+          .setAllowedOverRoaming(true)
+          .addRequestHeader("Accept", "application/octet-stream")
+          .addRequestHeader(
+            "User-Agent",
+            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36"
           )
         val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        manager.enqueue(request)
+        val id = manager.enqueue(request)
+        pendingInstalls[id] = PendingInstall(url, file)
         true
       } catch (_: Exception) {
         false
