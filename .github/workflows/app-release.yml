@@ -169,68 +169,65 @@ jobs:
       - name: Build, Ad-hoc Sign, and Package macOS App
         if: matrix.os_desc == 'macos-intel' || matrix.os_desc == 'macos-arm'
         run: |
-          echo "Starting macOS specific build process for ${{ matrix.os_desc }} on runner arch ${{ runner.arch }}..."
-          # Build the .app bundle
-          echo "Running npx tauri build..."
-          # npm run build # Removed as it caused "Missing script: build" error. 
-          # Assuming npx tauri build handles frontend or it's prebuilt.
-          npx tauri build
-          
+          set -euo pipefail
+          echo "Starting macOS build for ${{ matrix.os_desc }} on ${{ runner.arch }}..."
+          echo "--- disk before build ---"
+          df -h
+
+          # 只构建 .app：Tauri 内置 DMG 打包依赖 Finder/AppleScript，
+          # 在无图形会话的 macOS runner 上会偶发失败；DMG 由下面的 hdiutil 生成。
+          build_ok=0
+          for attempt in 1 2 3; do
+            if npx tauri build --bundles app; then
+              build_ok=1
+              break
+            fi
+            echo "::warning::tauri build failed (attempt ${attempt}), retrying..."
+            sleep 20
+          done
+          if [ "$build_ok" -ne 1 ]; then
+            echo "::error::tauri build failed after 3 attempts"
+            exit 1
+          fi
+
           APP_NAME_RAW=$(jq -r ".productName" src-tauri/tauri.conf.json)
-          # Replace spaces with hyphens for some file system uses if necessary, but .app names can have spaces
-          # APP_NAME_FS=$(echo "$APP_NAME_RAW" | sed 's/ /-/g') 
           APP_PATH="src-tauri/target/release/bundle/macos/${APP_NAME_RAW}.app"
-          
           if [ ! -d "$APP_PATH" ]; then
-            echo "Error: ${APP_PATH} not found after tauri build!"
-            ls -R src-tauri/target/release/bundle/macos/
+            echo "::error::${APP_PATH} not found after tauri build"
+            find src-tauri/target/release/bundle -maxdepth 4 -print || true
             exit 1
           fi
           echo ".app bundle found at ${APP_PATH}"
 
-          # Ad-hoc sign the .app bundle
-          echo "Ad-hoc signing ${APP_PATH}..."
-          codesign -s - --force --deep --options runtime "${APP_PATH}"
-          echo "Ad-hoc signing complete."
-
-          # Install create-dmg
-          echo "Installing create-dmg..."
-          # Check if brew is available, otherwise use npm
-          if command -v brew &> /dev/null
-          then
-              brew install create-dmg
-          else
-              sudo npm install -g create-dmg
+          # Ad-hoc 签名； hardened runtime 失败时退回普通 ad-hoc 签名
+          if ! codesign -s - --force --deep --options runtime "${APP_PATH}"; then
+            echo "::warning::codesign with hardened runtime failed, retrying without it"
+            codesign -s - --force --deep "${APP_PATH}"
           fi
-          echo "create-dmg installed."
+          codesign -dv --verbose=2 "${APP_PATH}" || true
 
-          # Create the .dmg
+          # 用 hdiutil 生成 DMG，避免 create-dmg 的 Finder/AppleScript 依赖。
+          # 放一个 /Applications 软链方便用户拖拽安装。
           DMG_OUTPUT_DIR="src-tauri/target/release/bundle/dmg"
           mkdir -p "${DMG_OUTPUT_DIR}"
           DMG_NAME="${APP_NAME_RAW}-${{ github.ref_name }}-${{ runner.arch }}.dmg"
           DMG_PATH="${DMG_OUTPUT_DIR}/${DMG_NAME}"
-          
-          echo "Creating DMG: ${DMG_PATH} from ${APP_PATH}"
-          create-dmg \
-            --volname "${APP_NAME_RAW} ${{ github.ref_name }}" \
-            --window-pos 200 120 \
-            --window-size 800 400 \
-            --icon-size 100 \
-            --icon "${APP_NAME_RAW}.app" 200 190 \
-            --hide-extension "${APP_NAME_RAW}.app" \
-            --app-drop-link 600 185 \
-            "${DMG_PATH}" \
-            "${APP_PATH}"
-          
-          if [ ! -f "$DMG_PATH" ]; then
-            echo "Error: DMG file ${DMG_PATH} not created!"
-            exit 1
-          fi
-          echo "DMG created successfully at ${DMG_PATH}"
+          STAGING_DIR="$(mktemp -d)"
+          trap 'rm -rf "${STAGING_DIR}"' EXIT
+          ditto "${APP_PATH}" "${STAGING_DIR}/${APP_NAME_RAW}.app"
+          ln -s /Applications "${STAGING_DIR}/Applications"
+          rm -f "${DMG_PATH}"
+          echo "Creating DMG: ${DMG_PATH}"
+          hdiutil create \
+            -volname "${APP_NAME_RAW} ${{ github.ref_name }}" \
+            -srcfolder "${STAGING_DIR}" \
+            -ov -format UDZO \
+            "${DMG_PATH}"
+          hdiutil verify "${DMG_PATH}"
           ls -lh "${DMG_PATH}"
 
           # tauri build 产出的 .app.tar.gz 里是 ad-hoc 签名前的 bundle，
-          # 直接用它做更新会让 macOS 更新后拿到未签名的包，因此用签名后的 .app 重建归档并重新签名
+          # 直接用它做更新会让 macOS 更新后拿到未签名的包，因此用签名后的 .app 重建归档并重新签名。
           TAR_GZ="src-tauri/target/release/bundle/macos/${APP_NAME_RAW}.app.tar.gz"
           rm -f "$TAR_GZ" "$TAR_GZ.sig"
           (
@@ -238,19 +235,38 @@ jobs:
             # 归档结构与 tauri 生成的保持一致：<Name>.app/ 位于压缩包根目录
             COPYFILE_DISABLE=1 tar -czf "${APP_NAME_RAW}.app.tar.gz" "${APP_NAME_RAW}.app"
           )
-          npx tauri signer sign --app-version "${GITHUB_REF_NAME#v}" "$TAR_GZ"
-
-          # Upload the .dmg artifact
-          echo "Uploading ${DMG_NAME}..."
-          gh release upload ${{ github.ref_name }} "${DMG_PATH}" --clobber
-          if [ -f "$TAR_GZ" ] && [ -f "${TAR_GZ}.sig" ]; then
-            gh release upload ${{ github.ref_name }} "${TAR_GZ}" "${TAR_GZ}.sig" --clobber
-            echo "macOS updater artifact uploaded."
-          else
+          sign_ok=0
+          for attempt in 1 2 3; do
+            if npx tauri signer sign --app-version "${GITHUB_REF_NAME#v}" "$TAR_GZ"; then
+              sign_ok=1
+              break
+            fi
+            echo "::warning::updater signing failed (attempt ${attempt}), retrying..."
+            sleep 10
+          done
+          if [ "$sign_ok" -ne 1 ] || [ ! -f "${TAR_GZ}.sig" ]; then
             echo "::error::macOS updater artifact missing after re-signing"
             exit 1
           fi
-          echo "DMG uploaded."
+
+          upload_asset() {
+            local file="$1"
+            local attempt
+            for attempt in 1 2 3; do
+              if gh release upload "${{ github.ref_name }}" "$file" --clobber; then
+                return 0
+              fi
+              echo "::warning::upload failed for ${file} (attempt ${attempt}), retrying..."
+              sleep 10
+            done
+            return 1
+          }
+
+          echo "Uploading macOS assets..."
+          upload_asset "${DMG_PATH}"
+          upload_asset "${TAR_GZ}"
+          upload_asset "${TAR_GZ}.sig"
+          echo "macOS assets uploaded."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
