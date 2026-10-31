@@ -7,62 +7,63 @@
  * 深色主题沿用旧版 LibreTV 配色；浅色主题为对应的白底变体。
  */
 :root {
-  --c-page: 246 247 249;           /* #f6f7f9 */
-  --c-surface: 255 255 255;        /* #ffffff */
-  --c-surface-raised: 255 255 255;
+  /* Lightframe 浅色主题：白板底 + 静蓝主色 */
+  --c-page: 244 245 250;           /* #f4f5fa */
+  --c-surface: 255 255 255;        /* #ffffff panel */
+  --c-surface-raised: 247 248 252; /* #f7f8fc panel-2 */
   --c-card: 255 255 255;
-  --c-chip: 238 240 243;           /* #eef0f3 */
-  --c-hover: 233 236 240;          /* #e9ecf0 */
-  --c-line: 224 227 232;           /* #e0e3e8 */
-  --c-content: 26 26 26;           /* #1a1a1a */
-  --c-muted: 95 99 104;            /* #5f6368 */
-  --c-faint: 107 114 128;          /* #6b7280（原 #8a8f98 对白底仅 3.2:1，加深后达到 AA 4.5:1） */
-  --c-accent: 37 99 235;           /* blue-600 */
-  --c-accent-hover: 29 78 216;     /* blue-700 */
+  --c-chip: 236 238 246;           /* #eceef6 bg-2 */
+  --c-hover: 236 239 247;          /* #eceff7 panel-3 */
+  --c-line: 226 230 240;           /* #e2e6f0 */
+  --c-content: 16 21 34;           /* #101522 */
+  --c-muted: 75 85 99;             /* #4b5563 */
+  --c-faint: 102 112 133;          /* #667085（白底 AA 达标） */
+  --c-accent: 91 75 232;           /* #5b4be8 Lightframe 亮色主色 */
+  --c-accent-hover: 79 70 229;     /* #4f46e5 */
   --c-on-accent: 255 255 255;      /* accent 实心底上的文字色 */
   /* 语义状态色（亮色主题取偏深值，保证浅底上的对比度） */
   --c-danger: 220 38 38;           /* red-600 */
   --c-danger-hover: 185 28 28;     /* red-700 */
   --c-success: 22 163 74;          /* green-600 */
   --c-warning: 217 119 6;          /* amber-600 */
-  --c-info: 37 99 235;             /* blue-600 */
+  --c-info: 91 75 232;             /* 随 accent */
   --c-rating: 245 158 11;          /* amber-500 */
   /* 实心状态底色（配白字）：比「文字用」色更深一档，保证白字对比度 ≥ 4.5:1 */
   --c-danger-solid: 185 28 28;     /* red-700 */
   --c-success-solid: 21 128 61;    /* green-700 */
   --c-warning-solid: 180 83 9;     /* amber-700 */
-  --c-info-solid: 29 78 216;       /* blue-700 */
+  --c-info-solid: 79 70 229;       /* indigo-600 */
   color-scheme: light;
 }
 
 .dark {
-  /* 旧版 LibreTV（backup-2025）赛博影视主题（整体调深一档）：深蓝黑底 + 霓虹蓝/粉点缀 */
-  --c-page: 11 16 26;              /* #0b101a 深蓝黑页面底色 */
-  --c-surface: 20 28 41;           /* #141c29 弹窗/抽屉底色 */
-  --c-surface-raised: 20 28 41;
-  --c-card: 13 20 31;              /* #0d141f 卡片底色 */
-  --c-chip: 22 32 46;              /* #16202e 卡片/输入框底色 */
-  --c-hover: 29 42 61;             /* #1d2a3d 悬停态（chip 提亮） */
-  --c-line: 34 48 69;              /* #223045 边框（近似旧版 rgba(0,204,255,.15) 观感） */
-  --c-content: 230 242 255;        /* #e6f2ff 蓝白主文本（--text-color） */
-  --c-muted: 133 153 178;          /* #8599b2 次级文本（--text-muted） */
-  --c-faint: 122 140 166;          /* #7a8ca6 三级文本（原 #6b7f99 在抽屉底色 #141c29 上仅 4.17:1，12px 小字不达标；提亮后 4.99:1） */
-  --c-accent: 0 184 230;           /* #00b8e6 霓虹蓝主色（--primary-color 调深一档） */
-  --c-accent-hover: 51 214 255;    /* #33d6ff 霓虹蓝浅变体（--primary-light） */
-  /* 霓虹蓝底亮度过高（对白字仅 2.35:1），暗色下实心底改用深色文字 */
-  --c-on-accent: 8 19 31;
-  /* 语义状态色（暗色主题取中等明度值，保证深蓝黑底上的对比度） */
-  --c-danger: 239 68 68;           /* red-500 */
-  --c-danger-hover: 248 113 113;   /* red-400 */
-  --c-success: 34 197 94;          /* green-500 */
-  --c-warning: 245 158 11;         /* amber-500 */
-  --c-info: 59 130 246;            /* blue-500 */
-  --c-rating: 251 191 36;          /* amber-400 */
-  /* 实心状态底色（配白字）：与亮色一致取深档，避免琥珀/绿色底白字对比度不足 */
-  --c-danger-solid: 185 28 28;     /* red-700 */
-  --c-success-solid: 21 128 61;    /* green-700 */
-  --c-warning-solid: 180 83 9;     /* amber-700 */
-  --c-info-solid: 29 78 216;       /* blue-700 */
+  /* Lightframe 暗色主题（光幕）：近黑蓝底 + 静蓝主色，对齐客户端 ui-next */
+  --c-page: 7 9 15;                /* #07090f */
+  --c-surface: 15 19 28;           /* #0f131c panel */
+  --c-surface-raised: 21 26 37;    /* #151a25 panel-2 */
+  --c-card: 15 19 28;              /* #0f131c */
+  --c-chip: 28 34 48;              /* #1c2230 panel-3 */
+  --c-hover: 28 34 48;             /* #1c2230 悬停态（chip 提亮） */
+  --c-line: 35 42 56;              /* #232a38 */
+  --c-content: 243 245 250;        /* #f3f5fa */
+  --c-muted: 167 176 194;          /* #a7b0c2 text-2 */
+  --c-faint: 125 135 156;          /* #7d879c（较 Lightframe #6d7789 提亮一档，小字在 panel 底 ≥4.5:1） */
+  --c-accent: 129 140 248;         /* #818cf8 indigo-400 */
+  --c-accent-hover: 99 102 241;    /* #6366f1 indigo-500 */
+  /* indigo-400 底对白字不足 4.5:1，暗色下实心底改用深色文字 */
+  --c-on-accent: 7 9 15;
+  /* 语义状态色（对齐 Lightframe：rose/emerald/amber 400 档） */
+  --c-danger: 251 113 133;         /* #fb7185 rose-400 */
+  --c-danger-hover: 253 164 175;   /* #fda4af rose-300 */
+  --c-success: 52 211 153;         /* #34d399 emerald-400 */
+  --c-warning: 251 191 36;         /* #fbbf24 amber-400 */
+  --c-info: 129 140 248;           /* 随 accent */
+  --c-rating: 251 191 36;          /* #fbbf24 amber-400 */
+  /* 实心状态底色（配白字）：取 600 档保证白字对比度 */
+  --c-danger-solid: 225 29 72;     /* #e11d48 rose-600 */
+  --c-success-solid: 5 150 105;    /* #059669 emerald-600 */
+  --c-warning-solid: 217 119 6;    /* #d97706 amber-600 */
+  --c-info-solid: 79 70 229;       /* #4f46e5 indigo-600 */
   color-scheme: dark;
 }
 
@@ -71,14 +72,14 @@ body {
   @apply bg-page text-content antialiased;
 }
 
-/* 暗色主题：模拟旧版 .page-bg 的深蓝黑纵向渐变 */
+/* 暗色主题：Lightframe bg → bg-2 的近黑蓝微妙纵向渐变 */
 .dark body {
-  background: linear-gradient(180deg, rgb(11 16 26), rgb(20 28 41)) fixed;
+  background: linear-gradient(180deg, rgb(7 9 15), rgb(10 13 20)) fixed;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC',
-    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', sans-serif;
 }
 
 @layer components {
@@ -133,9 +134,9 @@ body {
   color: rgb(var(--c-on-accent)) !important;
 }
 
-/* 品牌渐变字（沿用旧版 LibreTV 的霓虹蓝→霓虹粉） */
+/* 品牌渐变字（Lightframe 静蓝系：亮静蓝 → 主静蓝） */
 .brand-gradient {
-  background: linear-gradient(to right, #00ccff, #ff3c78);
+  background: linear-gradient(to right, #a5b4fc, #818cf8, #6366f1);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;

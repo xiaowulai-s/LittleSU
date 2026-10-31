@@ -9,6 +9,14 @@ const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      // Lightframe 圆角刻度（大圆角观感）：md 10 / lg 14 / xl 18 / 2xl 22
+      // 覆盖 Tailwind 默认（6/8/12/16），卡片、弹窗、按钮整体大圆角化
+      borderRadius: {
+        md: '10px',
+        lg: '14px',
+        xl: '18px',
+        '2xl': '22px',
+      },
       colors: {
         page: 'rgb(var(--c-page) / <alpha-value>)',
         surface: {
