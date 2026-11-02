@@ -572,10 +572,6 @@ export default function Live() {
           <div
             className={`live-screen ${playing ? 'is-playing' : ''}`}
             style={{ '--h': hue } as CSSProperties}
-            onTouchStart={onLiveTouchStart}
-            onTouchMove={onLiveTouchMove}
-            onTouchEnd={onLiveTouchEnd}
-            onTouchCancel={onLiveTouchEnd}
           >
             <div className="live-screen-bg" />
             <div className="live-screen-glow" />
@@ -592,6 +588,14 @@ export default function Live() {
                 setPlayerError(reason);
                 if (selected) failoverHandlerRef.current(selected, reason);
               }}
+            />
+            <div
+              className="live-gesture-layer"
+              aria-hidden="true"
+              onTouchStart={onLiveTouchStart}
+              onTouchMove={onLiveTouchMove}
+              onTouchEnd={onLiveTouchEnd}
+              onTouchCancel={onLiveTouchEnd}
             />
             <div className="live-screen-top">
               <span className="live-badge"><i className="live-dot" />LIVE</span>

@@ -2480,6 +2480,14 @@ h1, h2, h3, p { margin: 0; }
   z-index: 1;
 }
 .video-el.is-hidden { display: none; }
+/* 透明层接管视频上的触摸，避免 Android WebView 的原生 video 吞掉 touchmove */
+.video-gesture-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  touch-action: none;
+}
+.video-center { z-index: 3; }
 .video-play-overlay {
   position: absolute;
   left: 50%;
@@ -2518,6 +2526,12 @@ h1, h2, h3, p { margin: 0; }
   cursor: pointer;
 }
 .live-screen .video-el { z-index: 1; }
+.live-gesture-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  touch-action: none;
+}
 .live-screen-top, .live-screen-center, .live-screen-controls { z-index: 2; }
 .live-status-line {
   display: flex;

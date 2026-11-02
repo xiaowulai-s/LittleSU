@@ -1239,16 +1239,6 @@ export default function Player() {
           <div
             className={`video-surface ${locked ? 'is-locked' : ''}`}
             style={{ '--h': title.hue } as CSSProperties}
-            onTouchStart={onSurfaceTouchStart}
-            onTouchMove={onSurfaceTouchMove}
-            onTouchEnd={onSurfaceTouchEnd}
-            onTouchCancel={onSurfaceTouchCancel}
-            onContextMenu={(event) => event.preventDefault()}
-            onDoubleClick={(event) => {
-              if (device !== 'windows' || locked || sheetOpen) return;
-              const rect = event.currentTarget.getBoundingClientRect();
-              skipBy(doubleTapSeekSeconds(tapSide(event.clientX - rect.left, rect.width)));
-            }}
           >
             <div className="video-bg" />
             <div className="video-glow" />
@@ -1280,6 +1270,20 @@ export default function Player() {
                 persistHistory();
                 if (settings.autoNext && episode < episodes.length) switchEpisode(episode);
                 else setPlaying(false);
+              }}
+            />
+            <div
+              className="video-gesture-layer"
+              aria-hidden="true"
+              onTouchStart={onSurfaceTouchStart}
+              onTouchMove={onSurfaceTouchMove}
+              onTouchEnd={onSurfaceTouchEnd}
+              onTouchCancel={onSurfaceTouchCancel}
+              onContextMenu={(event) => event.preventDefault()}
+              onDoubleClick={(event) => {
+                if (device !== 'windows' || locked || sheetOpen) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                skipBy(doubleTapSeekSeconds(tapSide(event.clientX - rect.left, rect.width)));
               }}
             />
             {isMock && (
