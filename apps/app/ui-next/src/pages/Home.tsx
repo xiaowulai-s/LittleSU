@@ -16,7 +16,12 @@ import { Button, Chip, EmptyState, Rail, Rating } from '../ui';
 export default function Home() {
   const navigate = useNavigate();
   const { openTitle, favoriteKeys, toggleFavorite, toast, history, favorites, sourceState, customApis } = useApp();
-  const feed = useHomeFeed();
+  const [feedKey, setFeedKey] = useState(0);
+  const feed = useHomeFeed(feedKey);
+  const refreshFeed = () => {
+    setFeedKey((value) => value + 1);
+    toast('正在刷新推荐…');
+  };
   const [doubanTab, setDoubanTab] = useState<DoubanTabKey>('hot-movie');
   const [doubanCategory, setDoubanCategory] = useState('全部');
   const [doubanItems, setDoubanItems] = useState<DoubanItem[]>([]);
@@ -128,6 +133,9 @@ export default function Home() {
             >
               {isFavorite ? '已收藏' : '收藏'}
             </Button>
+            <Button variant="ghost" size="lg" icon="refresh" disabled={feed.loading} onClick={refreshFeed}>
+              刷新推荐
+            </Button>
           </div>
         </div>
         <div className="hero-side">
@@ -167,6 +175,7 @@ export default function Home() {
             <div className="hero-actions">
               <Button variant="primary" size="lg" icon="search" onClick={() => navigate('/search')}>去搜索</Button>
               <Button variant="secondary" size="lg" icon="wifi" onClick={() => navigate('/settings?section=sources')}>管理数据源</Button>
+              <Button variant="ghost" size="lg" icon="refresh" disabled={feed.loading} onClick={refreshFeed}>刷新推荐</Button>
             </div>
           </div>
         </section>

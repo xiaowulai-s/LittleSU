@@ -1,21 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import Hls from 'hls.js';
 import { channels as mockChannelData, liveSources } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
 import { hashHue } from '../lib/adapters';
-import { groupChannels } from '../lib/liveParser';
+import { groupChannels, parsePlaylist } from '../lib/liveParser';
 import type { LiveChannel } from '../lib/liveParser';
+import { channelKey, findChannelMatch } from '../lib/liveChannel';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
 import { useWakeLock } from '../lib/wakeLock';
 import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
-import { loadLiveFavorites, mergeLiveFavorite, saveLiveFavorites } from '../lib/liveFavorites';
+import {
+  favoriteKey,
+  loadLiveFavorites,
+  mergeLiveFavorite,
+  saveLiveFavorites,
+} from '../lib/liveFavorites';
 import type { LiveFavorite } from '../lib/liveFavorites';
+import { loadLiveRecent, recordLiveRecent, saveLiveRecent } from '../lib/liveRecent';
+import type { LiveRecent } from '../lib/liveRecent';
 import { useLivePlaylist, useEpg } from '../lib/hooks';
 import { currentProgram, epgDate, nextProgram } from '../lib/epg';
 import { stopAndroidPlayback, updateAndroidPlayback } from '../lib/androidNative';
-import { isTauri } from '../lib/env';
+import { httpText, isTauri } from '../lib/env';
 import { Button, Chip } from '../ui';
 
 const fallbackChannels: LiveChannel[] = mockChannelData.map((channel) => ({
@@ -26,6 +34,23 @@ const fallbackChannels: LiveChannel[] = mockChannelData.map((channel) => ({
   logo: '',
   tvgId: '',
 }));
+
+function ChannelLogo({ name, logo }: { name: string; logo?: string }) {
+  return (
+    <span className="live-channel-logo" style={{ '--h': hashHue(name) } as CSSProperties}>
+      <span className="live-channel-initial">{name.slice(0, 1)}</span>
+      {logo ? (
+        <img
+          src={logo}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={(event) => { event.currentTarget.remove(); }}
+        />
+      ) : null}
+    </span>
+  );
+}
 
 export default function Live() {
   const { toast, device, customLiveSources, settings } = useApp();
@@ -50,7 +75,9 @@ export default function Live() {
   const [retryKey, setRetryKey] = useState(0);
   const [cssFullscreen, setCssFullscreen] = useState(false);
   const [favorites, setFavorites] = useState<LiveFavorite[]>(loadLiveFavorites);
+  const [recent, setRecent] = useState<LiveRecent[]>(loadLiveRecent);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showRecent, setShowRecent] = useState(false);
   const [muted, setMuted] = useState(false);
   const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
   const [portrait, setPortrait] = useState(() =>
@@ -58,7 +85,27 @@ export default function Live() {
   );
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const pendingSelectRef = useRef<{ channelId: string; key: string; name: string } | null>(null);
+  const channelCacheRef = useRef<Map<string, LiveChannel[]>>(new Map());
+  const failoverRef = useRef(false);
+  const failoverTokenRef = useRef(0);
+  const failoverHandlerRef = useRef<(channel: LiveChannel, reason: string) => void>(() => undefined);
   const rotateLandscape = device === 'android' && cssFullscreen && portrait;
+  const rememberRecent = useCallback((channel: LiveChannel, sourceKey = source.key, sourceName = source.name) => {
+    if (!channel.url) return;
+    setRecent((prev) => {
+      const next = recordLiveRecent(prev, {
+        name: channel.name,
+        group: channel.group,
+        sourceKey,
+        sourceName,
+        channelId: channel.id,
+        logo: channel.logo,
+      });
+      saveLiveRecent(next);
+      return next;
+    });
+  }, [source.key, source.name]);
 
   useEffect(() => {
     const media = window.matchMedia('(orientation: portrait)');
@@ -81,11 +128,11 @@ export default function Live() {
   };
 
   const selected = list.find((channel) => channel.id === selectedId) ?? list[0];
-  const favoriteIds = useMemo(
-    () => new Set(favorites.filter((favorite) => favorite.sourceKey === source.key).map((favorite) => favorite.channelId)),
-    [favorites, source.key],
+  const favoriteSet = useMemo(
+    () => new Set(favorites.map((favorite) => favoriteKey(favorite))),
+    [favorites],
   );
-  const selectedFavorite = selected ? favoriteIds.has(selected.id) : false;
+  const selectedFavorite = selected ? favoriteSet.has(channelKey(selected)) : false;
   const epgDateStr = useMemo(() => epgDate(epgDay), [epgDay]);
   const epg = useEpg(selected, epgDateStr);
   const programNow = epgDay === 0 && epg.data ? currentProgram(epg.data.programs) : undefined;
@@ -103,10 +150,29 @@ export default function Live() {
   }, [cssFullscreen]);
 
   useEffect(() => {
+    if (loaded.length) channelCacheRef.current.set(source.key, loaded);
+  }, [loaded, source.key]);
+
+  useEffect(() => {
     if (!list.length) return;
+    const pending = pendingSelectRef.current;
+    if (pending) {
+      pendingSelectRef.current = null;
+      const match = list.find((channel) => channel.id === pending.channelId)
+        || list.find((channel) => channelKey(channel) === pending.key)
+        || findChannelMatch(list, { name: pending.name, tvgId: '' });
+      if (match) {
+        setSelectedId(match.id);
+        setPlaying(true);
+        setGroup('全部');
+        rememberRecent(match);
+        return;
+      }
+      toast('该源频道已变化，已显示可用频道', 'warning');
+    }
     setSelectedId((current) => (list.some((channel) => channel.id === current) ? current : list[0].id));
     setGroup('全部');
-  }, [list]);
+  }, [list, rememberRecent, toast]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -125,7 +191,10 @@ export default function Live() {
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data?.fatal) setPlayerError(data.details || '频道播放失败');
+        if (!data?.fatal) return;
+        const reason = data.details || '频道播放失败';
+        setPlayerError(reason);
+        if (selected) failoverHandlerRef.current(selected, reason);
       });
       hlsRef.current = hls;
     } else {
@@ -175,23 +244,82 @@ export default function Live() {
   const filtered = useMemo(() => {
     const text = query.trim().toLowerCase();
     return list.filter((channel) => {
-      if (showFavorites && !favoriteIds.has(channel.id)) return false;
+      if (showFavorites && !favoriteSet.has(channelKey(channel))) return false;
       if (!showFavorites && group !== '全部' && channel.group !== group) return false;
       if (text && !`${channel.name} ${channel.group}`.toLowerCase().includes(text)) return false;
       return true;
     });
-  }, [list, group, query, showFavorites, favoriteIds]);
+  }, [list, group, query, showFavorites, favoriteSet]);
+
+  const recentFiltered = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    return recent.filter((entry) => {
+      if (!text) return true;
+      return `${entry.name} ${entry.group} ${entry.sourceName || ''}`.toLowerCase().includes(text);
+    });
+  }, [recent, query]);
+  const sourceNameOf = (key: string) => sources.find((item) => item.key === key)?.name || '其它源';
 
   const hue = selected ? hashHue(selected.name) : 210;
   const usingFallback = !loaded.length && demo;
 
-  const switchSource = (index: number) => {
+  const switchSource = (index: number, options?: { failover?: boolean; quiet?: boolean }) => {
+    if (!options?.failover) {
+      failoverRef.current = false;
+      failoverTokenRef.current += 1;
+      pendingSelectRef.current = null;
+    }
     setSourceIndex(index);
     setGroup('全部');
     setQuery('');
     setShowFavorites(false);
-    toast(`已切换到 ${sources[index].name}`, 'success');
+    setShowRecent(false);
+    if (!options?.quiet) toast(`已切换到 ${sources[index].name}`, 'success');
   };
+
+  const getChannelsForSource = async (candidate: (typeof sources)[number]): Promise<LiveChannel[]> => {
+    const cached = channelCacheRef.current.get(candidate.key);
+    if (cached) return cached;
+    if (!candidate.url) throw new Error('直播源地址为空');
+    const text = await httpText(candidate.url, { timeoutSecs: 20 });
+    const channels = parsePlaylist(text);
+    channelCacheRef.current.set(candidate.key, channels);
+    return channels;
+  };
+
+  const tryLiveFailover = async (channel: LiveChannel, reason: string) => {
+    if (!isTauri() || failoverRef.current) return;
+    failoverRef.current = true;
+    const token = failoverTokenRef.current;
+    setPlayerError(`${reason}，正在查找同频道备用源…`);
+    const others = sources
+      .map((item, index) => ({ item, index }))
+      .filter(({ index }) => index !== sourceIndex);
+    const results = await Promise.all(others.map(async ({ item, index }) => {
+      try {
+        const channels = await getChannelsForSource(item);
+        return { item, index, match: findChannelMatch(channels, channel) };
+      } catch {
+        return { item, index, match: undefined };
+      }
+    }));
+    if (token !== failoverTokenRef.current) return;
+    const found = results.find((result) => result.match);
+    if (!found?.match) {
+      setPlayerError(`${reason}，未找到同频道备用源`);
+      return;
+    }
+    pendingSelectRef.current = {
+      channelId: found.match.id,
+      key: channelKey(found.match),
+      name: found.match.name,
+    };
+    failoverRef.current = true;
+    setPlayerError(null);
+    switchSource(found.index, { failover: true, quiet: true });
+    toast(`已切换到 ${found.item.name} 的同频道`, 'success');
+  };
+  failoverHandlerRef.current = (channel, reason) => { void tryLiveFailover(channel, reason); };
 
   const toggleFavoriteChannel = () => {
     if (!selected) return;
@@ -208,9 +336,30 @@ export default function Live() {
   };
 
   const selectChannel = (channel: LiveChannel) => {
+    failoverRef.current = false;
+    failoverTokenRef.current += 1;
     setSelectedId(channel.id);
     setPlaying(true);
+    setShowRecent(false);
+    setShowFavorites(false);
+    rememberRecent(channel);
     toast(`正在播放 ${channel.name}`);
+  };
+
+  const openRecent = (entry: LiveRecent) => {
+    const index = sources.findIndex((item) => item.key === entry.sourceKey);
+    if (index >= 0 && index !== sourceIndex) {
+      pendingSelectRef.current = { channelId: entry.channelId, key: entry.key, name: entry.name };
+      failoverRef.current = false;
+      failoverTokenRef.current += 1;
+      switchSource(index, { failover: true });
+      return;
+    }
+    const match = list.find((channel) => channel.id === entry.channelId)
+      || list.find((channel) => channelKey(channel) === entry.key)
+      || findChannelMatch(list, { name: entry.name, tvgId: '' });
+    if (match) selectChannel(match);
+    else toast('当前源未找到该频道，请切换其它直播源', 'warning');
   };
 
   const togglePlay = () => {
@@ -323,6 +472,12 @@ export default function Live() {
               playsInline
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
+              onError={() => {
+                if (hlsRef.current) return;
+                const reason = '频道播放失败';
+                setPlayerError(reason);
+                if (selected) failoverHandlerRef.current(selected, reason);
+              }}
             />
             <div className="live-screen-top">
               <span className="live-badge"><i className="live-dot" />LIVE</span>
@@ -338,7 +493,17 @@ export default function Live() {
             {playerError && (
               <div className="video-error">
                 <span>{playerError}</span>
-                <button type="button" onClick={() => { setPlayerError(null); setRetryKey((value) => value + 1); }}>重试</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    failoverRef.current = false;
+                    failoverTokenRef.current += 1;
+                    setPlayerError(null);
+                    setRetryKey((value) => value + 1);
+                  }}
+                >
+                  重试
+                </button>
               </div>
             )}
             <div className="live-screen-controls">
@@ -427,41 +592,62 @@ export default function Live() {
         <aside className="live-channel-panel">
           <div className="live-channel-head">
             <div>
-              <h3>{source.name}</h3>
-              <p>{list.length} 个频道{usingFallback ? '（示例）' : ' · 解析自公开 M3U'}</p>
+              <h3>{showRecent ? '最近观看' : source.name}</h3>
+              <p>{showRecent ? `${recent.length} 条跨源记录` : `${list.length} 个频道${usingFallback ? '（示例）' : ' · 解析自公开 M3U'}`}</p>
             </div>
-            <span className="live-count">{filtered.length}</span>
+            <span className="live-count">{showRecent ? recentFiltered.length : filtered.length}</span>
           </div>
           <div className="live-search">
             <Icon name="search" size={16} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索频道或分组" />
           </div>
           <div className="live-groups">
-            <Chip active={showFavorites} onClick={() => { setShowFavorites(true); setGroup('全部'); }}>
-              收藏 {favoriteIds.size}
+            <Chip active={showRecent} onClick={() => { setShowRecent(true); setShowFavorites(false); setGroup('全部'); }}>
+              最近 {recent.length}
+            </Chip>
+            <Chip active={showFavorites} onClick={() => { setShowFavorites(true); setShowRecent(false); setGroup('全部'); }}>
+              收藏 {favoriteSet.size}
             </Chip>
             {groups.map((item) => (
-              <Chip key={item} active={!showFavorites && group === item} onClick={() => { setShowFavorites(false); setGroup(item); }}>
+              <Chip
+                key={item}
+                active={!showFavorites && !showRecent && group === item}
+                onClick={() => { setShowFavorites(false); setShowRecent(false); setGroup(item); }}
+              >
                 {item}
               </Chip>
             ))}
           </div>
-          <div className="live-channel-grid">
-            {filtered.map((channel) => (
-              <button
-                type="button"
-                key={channel.id}
-                className={`live-channel-card ${selected?.id === channel.id ? 'is-active' : ''}`}
-                onClick={() => selectChannel(channel)}
-              >
-                <span className="live-channel-logo" style={{ '--h': hashHue(channel.name) } as CSSProperties}>{channel.name.slice(0, 1)}</span>
-                <span className="live-channel-name">{channel.name}</span>
-                <small>{channel.group}</small>
-                {selected?.id === channel.id && <i className="live-channel-playing"><Icon name="play" size={11} /></i>}
-              </button>
-            ))}
-          </div>
-          {!filtered.length && (
+          {showRecent ? (
+            <div className="live-recent-grid">
+              {recentFiltered.map((entry) => (
+                <button type="button" key={entry.key} className="live-channel-card" onClick={() => openRecent(entry)}>
+                  <ChannelLogo name={entry.name} logo={entry.logo} />
+                  <span className="live-channel-name">{entry.name}</span>
+                  <small>{entry.group} · {entry.sourceName || sourceNameOf(entry.sourceKey)}</small>
+                  <i className="live-channel-playing"><Icon name="play" size={11} /></i>
+                </button>
+              ))}
+              {!recentFiltered.length && <div className="live-empty">还没有最近观看记录，播放频道后会自动出现在这里</div>}
+            </div>
+          ) : (
+            <div className="live-channel-grid">
+              {filtered.map((channel) => (
+                <button
+                  type="button"
+                  key={channel.id}
+                  className={`live-channel-card ${selected?.id === channel.id ? 'is-active' : ''}`}
+                  onClick={() => selectChannel(channel)}
+                >
+                  <ChannelLogo name={channel.name} logo={channel.logo} />
+                  <span className="live-channel-name">{channel.name}</span>
+                  <small>{channel.group}</small>
+                  {selected?.id === channel.id && <i className="live-channel-playing"><Icon name="play" size={11} /></i>}
+                </button>
+              ))}
+            </div>
+          )}
+          {!showRecent && !filtered.length && (
             <div className="live-empty">{showFavorites ? '还没有收藏频道，选中频道后点心形收藏' : '没有匹配的频道'}</div>
           )}
         </aside>

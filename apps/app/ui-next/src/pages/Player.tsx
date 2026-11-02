@@ -10,12 +10,13 @@ import { stopAndroidPlayback, updateAndroidPlayback } from '../lib/androidNative
 import { refreshTitleDetail, useDetail } from '../lib/hooks';
 import { isExpiredStreamError, selectRefreshedEpisode } from '../lib/playbackRefresh';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
-import { clampBrightness, clampVolume, gestureRatio } from '../lib/gesture';
+import { clampBrightness, clampVolume, doubleTapSeekSeconds, gestureRatio, isDoubleTap, tapSide } from '../lib/gesture';
+import type { TapSide } from '../lib/gesture';
 import { pickQualityLevel, qualityLabel } from '../lib/quality';
 import { useWakeLock } from '../lib/wakeLock';
 import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/mediaSession';
 import { CLIENT_RELEASE_URL, shareContent } from '../lib/share';
-import { normalizeSubtitle } from '../lib/subtitles';
+import { clampSubtitleOffset, normalizeSubtitle, shiftVtt } from '../lib/subtitles';
 import { mergeEpisodeProgress, resumePositionFor } from '../lib/progress';
 import type { EpisodeProgress } from '../lib/storage';
 import { httpText, isTauri } from '../lib/env';
@@ -23,6 +24,23 @@ import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
 
 const speeds = [1, 1.25, 1.5, 2];
+const subtitleSizes = [
+  { label: '小', value: 0.8 },
+  { label: '标准', value: 1 },
+  { label: '大', value: 1.25 },
+  { label: '特大', value: 1.5 },
+];
+const subtitleColors = [
+  { label: '白', value: '#ffffff' },
+  { label: '黄', value: '#ffe066' },
+  { label: '绿', value: '#7ee787' },
+  { label: '蓝', value: '#7dd3fc' },
+];
+const subtitleBackgrounds = [
+  { label: '无底', value: 'none' as const },
+  { label: '阴影', value: 'shadow' as const },
+  { label: '底色', value: 'block' as const },
+];
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return '00:00';
@@ -128,6 +146,11 @@ export default function Player() {
   const [audioTracks, setAudioTracks] = useState<{ id: number; label: string }[]>([]);
   const [subtitleId, setSubtitleId] = useState(-1);
   const [localSubtitle, setLocalSubtitle] = useState<{ name: string; vtt: string } | null>(null);
+  const displaySubtitleVtt = useMemo(
+    () => (localSubtitle ? shiftVtt(localSubtitle.vtt, settings.subtitleOffset) : ''),
+    [localSubtitle, settings.subtitleOffset],
+  );
+  const subtitleOffsetLabel = `${settings.subtitleOffset > 0 ? '+' : ''}${settings.subtitleOffset.toFixed(1)}s`;
   const [audioId, setAudioId] = useState(0);
   const [pipSupported, setPipSupported] = useState(false);
   const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
@@ -137,7 +160,18 @@ export default function Player() {
   const subtitleTrackRef = useRef<HTMLTrackElement | null>(null);
   const subtitleUrlRef = useRef<string | null>(null);
   const hudTimer = useRef<number | null>(null);
-  const gestureRef = useRef<{ kind: 'brightness' | 'volume'; startY: number; startValue: number } | null>(null);
+  const gestureRef = useRef<{
+    kind: 'brightness' | 'volume';
+    startY: number;
+    startValue: number;
+    startX: number;
+    startTime: number;
+    moved: boolean;
+    longPress: boolean;
+  } | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const lastTapRef = useRef<{ at: number; side: TapSide } | null>(null);
+  const rateBeforeLongPressRef = useRef(1);
   const triedNextRef = useRef<(reason: string) => boolean>(() => false);
   const fullscreenRef = useRef<() => void>(() => undefined);
   const settingsRef = useRef(settings);
@@ -546,6 +580,12 @@ export default function Player() {
     return () => stopAndroidPlayback();
   }, [device]);
 
+  useEffect(() => () => {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    const video = videoRef.current;
+    if (video && rateBeforeLongPressRef.current) video.playbackRate = rateBeforeLongPressRef.current;
+  }, []);
+
   useEffect(() => {
     setPipSupported(typeof document !== 'undefined' && document.pictureInPictureEnabled === true);
   }, []);
@@ -570,8 +610,8 @@ export default function Player() {
   /* 本地 SRT/VTT 字幕：转成 WebVTT 后挂到 video 上 */
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !localSubtitle) return;
-    const url = URL.createObjectURL(new Blob([localSubtitle.vtt], { type: 'text/vtt' }));
+    if (!video || !localSubtitle || !displaySubtitleVtt) return;
+    const url = URL.createObjectURL(new Blob([displaySubtitleVtt], { type: 'text/vtt' }));
     const track = document.createElement('track');
     track.kind = 'subtitles';
     track.label = localSubtitle.name;
@@ -595,7 +635,7 @@ export default function Player() {
       if (subtitleTrackRef.current === track) subtitleTrackRef.current = null;
       if (subtitleUrlRef.current === url) subtitleUrlRef.current = null;
     };
-  }, [localSubtitle, streamUrl]);
+  }, [localSubtitle, displaySubtitleVtt, streamUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -917,24 +957,54 @@ export default function Player() {
     }
   };
 
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
   const onSurfaceTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (!cssFullscreen || locked || sheetOpen || rotateLandscape) return;
+    if (locked || sheetOpen || rotateLandscape) return;
     const target = event.target as HTMLElement;
-    if (target.closest('.video-controls, .player-sheet-layer, .player-unlock')) return;
+    if (target.closest('.video-controls, .player-sheet-layer, .player-unlock, .video-play-big, .video-error, .video-center')) return;
     const touch = event.touches[0];
     if (!touch) return;
-    const left = touch.clientX < window.innerWidth / 2;
+    const side = tapSide(touch.clientX, window.innerWidth);
     gestureRef.current = {
-      kind: left ? 'brightness' : 'volume',
+      kind: side === 'left' ? 'brightness' : 'volume',
       startY: touch.clientY,
-      startValue: left ? brightness : (videoRef.current?.volume ?? settings.volume),
+      startValue: side === 'left' ? brightness : (videoRef.current?.volume ?? settings.volume),
+      startX: touch.clientX,
+      startTime: Date.now(),
+      moved: false,
+      longPress: false,
     };
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      const currentGesture = gestureRef.current;
+      if (!currentGesture || currentGesture.moved || currentGesture.longPress || !playing) return;
+      currentGesture.longPress = true;
+      const video = videoRef.current;
+      if (video) {
+        rateBeforeLongPressRef.current = video.playbackRate;
+        video.playbackRate = 2;
+      }
+      toast('2 倍速播放中，松开恢复', 'success');
+    }, 450);
   };
 
   const onSurfaceTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
     const gesture = gestureRef.current;
     const touch = event.touches[0];
     if (!gesture || !touch) return;
+    const dx = Math.abs(touch.clientX - gesture.startX);
+    const dy = Math.abs(touch.clientY - gesture.startY);
+    if (!gesture.moved && (dx > 8 || dy > 8)) {
+      gesture.moved = true;
+      clearLongPressTimer();
+    }
+    if (!cssFullscreen || gesture.longPress || !gesture.moved) return;
     const delta = gestureRatio(gesture.startY, touch.clientY, window.innerHeight);
     if (gesture.kind === 'brightness') {
       const value = clampBrightness(gesture.startValue + delta * 1.3);
@@ -955,9 +1025,39 @@ export default function Player() {
   const onSurfaceTouchEnd = () => {
     const gesture = gestureRef.current;
     gestureRef.current = null;
-    if (gesture?.kind === 'volume') {
-      updateSettings({ volume: videoRef.current?.volume ?? settings.volume });
+    clearLongPressTimer();
+    if (!gesture) return;
+    if (gesture.longPress) {
+      const video = videoRef.current;
+      if (video) video.playbackRate = rateBeforeLongPressRef.current || speeds[speedIndex] || 1;
+      return;
     }
+    if (gesture.moved) {
+      if (gesture.kind === 'volume') {
+        updateSettings({ volume: videoRef.current?.volume ?? settings.volume });
+      }
+      return;
+    }
+    if (Date.now() - gesture.startTime > 300) return;
+    const side = tapSide(gesture.startX, window.innerWidth);
+    const now = Date.now();
+    if (isDoubleTap(lastTapRef.current, now, side)) {
+      lastTapRef.current = null;
+      const seconds = doubleTapSeekSeconds(side);
+      skipBy(seconds);
+      toast(side === 'left' ? '后退 10 秒' : '前进 10 秒', 'success');
+      return;
+    }
+    lastTapRef.current = { at: now, side };
+  };
+
+  const onSurfaceTouchCancel = () => {
+    if (gestureRef.current?.longPress) {
+      const video = videoRef.current;
+      if (video) video.playbackRate = rateBeforeLongPressRef.current || speeds[speedIndex] || 1;
+    }
+    gestureRef.current = null;
+    clearLongPressTimer();
   };
 
   const lockScreen = () => {
@@ -1095,6 +1195,12 @@ export default function Player() {
             onTouchStart={onSurfaceTouchStart}
             onTouchMove={onSurfaceTouchMove}
             onTouchEnd={onSurfaceTouchEnd}
+            onTouchCancel={onSurfaceTouchCancel}
+            onContextMenu={(event) => event.preventDefault()}
+            onDoubleClick={(event) => {
+              if (device !== 'windows' || locked || sheetOpen) return;
+              skipBy(doubleTapSeekSeconds(tapSide(event.clientX, window.innerWidth)));
+            }}
           >
             <div className="video-bg" />
             <div className="video-glow" />
@@ -1107,7 +1213,13 @@ export default function Player() {
               style={{
                 objectFit: fitMode,
                 filter: brightness !== 1 ? `brightness(${brightness})` : undefined,
-              }}
+                '--sub-scale': settings.subtitleSize,
+                '--sub-color': settings.subtitleColor,
+                '--sub-bg': settings.subtitleBackground === 'block' ? 'rgba(0, 0, 0, .72)' : 'transparent',
+                '--sub-shadow': settings.subtitleBackground === 'shadow'
+                  ? '0 1px 3px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .85)'
+                  : 'none',
+              } as CSSProperties}
               onTimeUpdate={(event) => {
                 const video = event.currentTarget;
                 setCurrentTime(video.currentTime);
@@ -1412,6 +1524,46 @@ export default function Player() {
                           </button>
                         )}
                       </div>
+                      <div className="player-sheet-inline">
+                        {subtitleSizes.map((item) => (
+                          <Chip key={item.label} active={settings.subtitleSize === item.value} onClick={() => updateSettings({ subtitleSize: item.value })}>
+                            {item.label}
+                          </Chip>
+                        ))}
+                      </div>
+                      <div className="player-sheet-inline">
+                        {subtitleColors.map((item) => (
+                          <Chip key={item.value} active={settings.subtitleColor === item.value} onClick={() => updateSettings({ subtitleColor: item.value })}>
+                            {item.label}
+                          </Chip>
+                        ))}
+                        {subtitleBackgrounds.map((item) => (
+                          <Chip key={item.value} active={settings.subtitleBackground === item.value} onClick={() => updateSettings({ subtitleBackground: item.value })}>
+                            {item.label}
+                          </Chip>
+                        ))}
+                      </div>
+                      <div className="player-sheet-inline">
+                        <button
+                          type="button"
+                          className="player-sheet-mini"
+                          onClick={() => updateSettings({ subtitleOffset: clampSubtitleOffset(settings.subtitleOffset - 0.5) })}
+                        >
+                          -0.5 秒
+                        </button>
+                        <span className="player-sheet-mini">{subtitleOffsetLabel}</span>
+                        <button
+                          type="button"
+                          className="player-sheet-mini"
+                          onClick={() => updateSettings({ subtitleOffset: clampSubtitleOffset(settings.subtitleOffset + 0.5) })}
+                        >
+                          +0.5 秒
+                        </button>
+                        <button type="button" className="player-sheet-mini" onClick={() => updateSettings({ subtitleOffset: 0 })}>
+                          重置
+                        </button>
+                      </div>
+                      <small className="player-sheet-hint">样式对字幕轨生效；时间偏移仅对外挂字幕生效</small>
                     </div>
                     <div className="player-sheet-section">
                       <span className="player-sheet-label">音轨</span>

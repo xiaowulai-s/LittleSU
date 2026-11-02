@@ -1549,6 +1549,9 @@ h1, h2, h3, p { margin: 0; }
   border-radius: 14px;
   overflow: hidden;
   background: #000;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .video-bg {
   position: absolute;
@@ -3115,4 +3118,37 @@ body.lsu-pip .live-screen video {
   max-height: none !important;
   object-fit: contain !important;
   z-index: 2147483647 !important;
+}
+
+/* ---------- 直播台标 / 最近观看 ---------- */
+
+.live-channel-logo { position: relative; overflow: hidden; }
+.live-channel-initial { position: relative; z-index: 1; }
+.live-channel-logo img {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #080b12;
+}
+.live-recent-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  overflow-y: auto;
+  max-height: 500px;
+  padding-right: 2px;
+}
+.live-recent-grid .live-empty { grid-column: 1 / -1; }
+
+/* ---------- 字幕样式 ---------- */
+
+.video-surface video::cue {
+  font-size: calc(1.15em * var(--sub-scale, 1));
+  color: var(--sub-color, #fff);
+  background-color: var(--sub-bg, transparent);
+  text-shadow: var(--sub-shadow, 0 1px 3px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .85));
+  font-weight: 600;
 }

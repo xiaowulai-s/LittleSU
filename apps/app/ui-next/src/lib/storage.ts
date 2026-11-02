@@ -57,6 +57,10 @@ export interface PlaybackSettings {
   keepAwake: boolean;
   searchTimeoutSecs: number;
   searchRetries: number;
+  subtitleSize: number;
+  subtitleColor: string;
+  subtitleBackground: 'none' | 'shadow' | 'block';
+  subtitleOffset: number;
 }
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -150,6 +154,10 @@ export function loadSettings(): PlaybackSettings {
     keepAwake: true,
     searchTimeoutSecs: 12,
     searchRetries: 0,
+    subtitleSize: 1,
+    subtitleColor: '#ffffff',
+    subtitleBackground: 'shadow',
+    subtitleOffset: 0,
   };
   return { ...defaults, ...readJson<Partial<PlaybackSettings>>(KEYS.settings, {}) };
 }

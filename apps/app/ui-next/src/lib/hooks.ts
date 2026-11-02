@@ -359,7 +359,7 @@ function parseLatest(json: unknown, source: SourceDef): Title[] {
     .filter((title): title is Title => Boolean(title));
 }
 
-export function useHomeFeed(): FeedState {
+export function useHomeFeed(refreshKey = 0): FeedState {
   const { activeSources } = useApp();
   const demo = !isTauri();
   const [state, setState] = useState<FeedState>(() => (
@@ -409,7 +409,7 @@ export function useHomeFeed(): FeedState {
     return () => {
       cancelled = true;
     };
-  }, [activeSources]);
+  }, [activeSources, refreshKey]);
 
   return state;
 }
