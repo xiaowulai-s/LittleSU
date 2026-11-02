@@ -1,5 +1,6 @@
 import { httpText, isTauri } from './env';
 import type { LiveChannel } from './liveParser';
+import { normalizeChannelName } from './liveChannel';
 
 /**
  * 直播节目单（EPG）。
@@ -23,9 +24,15 @@ export interface EpgResult {
 }
 
 const cache = new Map<string, { at: number; value: EpgResult | null }>();
+const xmlCache = new Map<string, { at: number; text: string }>();
+const xmltvCache = new Map<string, { at: number; value: EpgResult | null }>();
+const XML_CACHE_TTL = 30 * 60 * 1000;
+const XML_MAX_LENGTH = 30 * 1024 * 1024;
 
 export function clearEpgCache(): void {
   cache.clear();
+  xmlCache.clear();
+  xmltvCache.clear();
 }
 
 /** 本地日期（YYYY-MM-DD），offset 为天数偏移。 */
@@ -51,11 +58,128 @@ function sanitizeTitle(raw: string): string {
   return raw.replace(/\s*--\s*免费使用.*$/i, '').trim();
 }
 
-export async function fetchEpg(
+function decodeXml(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+function xmltvTime(raw: string): { date: string; time: string } | null {
+  const match = raw.trim().match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  if (!match) return null;
+  return { date: `${match[1]}${match[2]}${match[3]}`, time: `${match[4]}:${match[5]}` };
+}
+
+function attr(attrs: string, name: string): string {
+  const match = attrs.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i'));
+  return match ? decodeXml(match[1]) : '';
+}
+
+/** 解析 XMLTV，按 tvg-id/频道名高置信匹配；返回指定日期的节目。 */
+export function parseXmltv(
+  xml: string,
+  channel: Pick<LiveChannel, 'name' | 'tvgId'>,
+  date: string,
+): EpgResult | null {
+  const candidates = epgCandidates(channel).map(normalizeChannelName).filter(Boolean);
+  if (!candidates.length) return null;
+
+  const channelNames = new Map<string, string[]>();
+  const channelPattern = /<channel\b([^>]*)>([\s\S]*?)<\/channel>/gi;
+  let channelMatch: RegExpExecArray | null;
+  while ((channelMatch = channelPattern.exec(xml))) {
+    const id = attr(channelMatch[1], 'id');
+    if (!id) continue;
+    const names = Array.from(channelMatch[2].matchAll(/<display-name[^>]*>([\s\S]*?)<\/display-name>/gi))
+      .map((item) => decodeXml(item[1]).trim())
+      .filter(Boolean);
+    channelNames.set(id, names);
+  }
+
+  const matched = new Set<string>();
+  for (const [id, names] of channelNames) {
+    const keys = [id, ...names].map(normalizeChannelName).filter(Boolean);
+    if (keys.some((key) => candidates.includes(key))) matched.add(id);
+  }
+  if (!matched.size) {
+    for (const [id, names] of channelNames) {
+      const keys = [id, ...names].map(normalizeChannelName).filter((key) => key.length >= 3);
+      const loose = (key: string, candidate: string) => key === candidate
+        || (key.startsWith(candidate) && !/^\d/.test(key.slice(candidate.length)));
+      if (keys.some((key) => candidates.some((candidate) => loose(key, candidate)))) {
+        matched.add(id);
+      }
+    }
+  }
+  if (!matched.size) return null;
+
+  const targetDate = date.replace(/-/g, '');
+  const programs: EpgProgram[] = [];
+  const programPattern = /<programme\b([^>]*)>([\s\S]*?)<\/programme>/gi;
+  let programMatch: RegExpExecArray | null;
+  while ((programMatch = programPattern.exec(xml))) {
+    if (!matched.has(attr(programMatch[1], 'channel'))) continue;
+    const start = xmltvTime(attr(programMatch[1], 'start'));
+    const stop = xmltvTime(attr(programMatch[1], 'stop'));
+    if (!start || start.date !== targetDate) continue;
+    const titleMatch = programMatch[2].match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch ? sanitizeTitle(decodeXml(titleMatch[1]).replace(/<[^>]+>/g, '').trim()) : '';
+    if (!title) continue;
+    programs.push({ start: start.time, end: stop?.time || start.time, title });
+  }
+  programs.sort((a, b) => a.start.localeCompare(b.start));
+  if (!programs.length) return null;
+
+  const matchedName = matched.values().next().value as string | undefined;
+  const displayName = matchedName ? channelNames.get(matchedName)?.[0] : undefined;
+  return { channelName: displayName || channel.name, date, programs };
+}
+
+export async function fetchXmltvEpg(
+  url: string,
   channel: Pick<LiveChannel, 'name' | 'tvgId'>,
   date: string,
 ): Promise<EpgResult | null> {
   if (!isTauri()) throw new Error('节目单需要在客户端内加载');
+  if (!/^https?:\/\//i.test(url)) throw new Error('自定义 EPG 地址无效');
+
+  const parsedKey = `${url}|${epgCandidates(channel).join(',')}|${date}`;
+  const parsedHit = xmltvCache.get(parsedKey);
+  if (parsedHit && Date.now() - parsedHit.at < XML_CACHE_TTL) return parsedHit.value;
+
+  let text = '';
+  const rawHit = xmlCache.get(url);
+  if (rawHit && Date.now() - rawHit.at < XML_CACHE_TTL) {
+    text = rawHit.text;
+  } else {
+    text = await httpText(url, { timeoutSecs: 30 });
+    if (text.length > XML_MAX_LENGTH) throw new Error('自定义 EPG 文件过大（>30MB）');
+    xmlCache.set(url, { at: Date.now(), text });
+  }
+  const value = parseXmltv(text, channel, date);
+  xmltvCache.set(parsedKey, { at: Date.now(), value });
+  return value;
+}
+
+export async function fetchEpg(
+  channel: Pick<LiveChannel, 'name' | 'tvgId'>,
+  date: string,
+  customUrl = '',
+): Promise<EpgResult | null> {
+  if (!isTauri()) throw new Error('节目单需要在客户端内加载');
+  if (customUrl.trim()) {
+    try {
+      const custom = await fetchXmltvEpg(customUrl.trim(), channel, date);
+      if (custom) return custom;
+    } catch {
+      /* 自定义 EPG 失败时回退到 51zmt */
+    }
+  }
   for (const candidate of epgCandidates(channel)) {
     const key = `${candidate}|${date}`;
     const hit = cache.get(key);

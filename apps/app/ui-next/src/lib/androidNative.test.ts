@@ -7,10 +7,12 @@ import {
   isApkUrl,
   openAndroidCastSettings,
   resetAndroidScreenBrightness,
+  scheduleAndroidEpgReminder,
   setAndroidMediaVolume,
   setAndroidScreenBrightness,
   stopAndroidPlayback,
   updateAndroidPlayback,
+  cancelAndroidEpgReminder,
 } from './androidNative';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -81,6 +83,16 @@ describe('androidNative bridge', () => {
     vi.stubGlobal('window', { LsuNative: { openCastSettings } });
     expect(openAndroidCastSettings()).toBe(true);
     expect(openCastSettings).toHaveBeenCalled();
+  });
+
+  it('schedules and cancels Android EPG reminders through the bridge', () => {
+    const scheduleEpgReminder = vi.fn(() => true);
+    const cancelEpgReminder = vi.fn();
+    vi.stubGlobal('window', { LsuNative: { scheduleEpgReminder, cancelEpgReminder } });
+    expect(scheduleAndroidEpgReminder('id', 1_800_000_000_000, '新闻联播', 'CCTV-1')).toBe(true);
+    expect(scheduleEpgReminder).toHaveBeenCalledWith('id', 1_800_000_000_000, '新闻联播', 'CCTV-1');
+    cancelAndroidEpgReminder('id');
+    expect(cancelEpgReminder).toHaveBeenCalledWith('id');
   });
 
   it('falls back when media bridge values are invalid', () => {

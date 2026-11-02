@@ -11,6 +11,7 @@ export const KEYS = {
   settings: 'lsu.settings',
   health: 'lsu.health',
   searchView: 'lsu.searchView',
+  epgReminders: 'lsu.epgReminders',
 } as const;
 
 export interface EpisodeProgress {
@@ -61,6 +62,7 @@ export interface PlaybackSettings {
   subtitleColor: string;
   subtitleBackground: 'none' | 'shadow' | 'block';
   subtitleOffset: number;
+  customEpgUrl: string;
 }
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -158,6 +160,7 @@ export function loadSettings(): PlaybackSettings {
     subtitleColor: '#ffffff',
     subtitleBackground: 'shadow',
     subtitleOffset: 0,
+    customEpgUrl: '',
   };
   return { ...defaults, ...readJson<Partial<PlaybackSettings>>(KEYS.settings, {}) };
 }

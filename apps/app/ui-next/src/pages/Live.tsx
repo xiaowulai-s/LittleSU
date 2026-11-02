@@ -22,8 +22,20 @@ import { loadLiveRecent, recordLiveRecent, saveLiveRecent } from '../lib/liveRec
 import type { LiveRecent } from '../lib/liveRecent';
 import { useLivePlaylist, useEpg } from '../lib/hooks';
 import { currentProgram, epgDate, nextProgram } from '../lib/epg';
+import type { EpgProgram } from '../lib/epg';
+import {
+  epgReminderId,
+  epgReminderTime,
+  isEpgReminderSet,
+  loadEpgReminders,
+  saveEpgReminders,
+  toggleEpgReminder,
+} from '../lib/epgReminders';
+import type { EpgReminder } from '../lib/epgReminders';
+import { EPG_REMINDERS_CHANGED, notifyEpgRemindersChanged } from '../EpgReminderScheduler';
 import { clampBrightness, clampVolume, gestureRatio, tapSide } from '../lib/gesture';
 import {
+  cancelAndroidEpgReminder,
   getAndroidMediaVolume,
   getAndroidScreenBrightness,
   hasAndroidMediaBridge,
@@ -81,6 +93,7 @@ export default function Live() {
   const list = loaded.length ? loaded : demo ? fallbackChannels : [];
   const [selectedId, setSelectedId] = useState<string>('');
   const [epgDay, setEpgDay] = useState(0);
+  const [reminders, setReminders] = useState<EpgReminder[]>(loadEpgReminders);
   const [playing, setPlaying] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -152,9 +165,63 @@ export default function Live() {
   );
   const selectedFavorite = selected ? favoriteSet.has(channelKey(selected)) : false;
   const epgDateStr = useMemo(() => epgDate(epgDay), [epgDay]);
-  const epg = useEpg(selected, epgDateStr);
+  const epg = useEpg(selected, epgDateStr, settings.customEpgUrl);
   const programNow = epgDay === 0 && epg.data ? currentProgram(epg.data.programs) : undefined;
   const programNext = epg.data ? nextProgram(epg.data.programs) : undefined;
+
+  useEffect(() => {
+    const sync = () => setReminders(loadEpgReminders());
+    window.addEventListener(EPG_REMINDERS_CHANGED, sync);
+    return () => window.removeEventListener(EPG_REMINDERS_CHANGED, sync);
+  }, []);
+
+  const isFutureProgram = (program: EpgProgram) => {
+    const today = epgDate(0);
+    if (epgDateStr > today) return true;
+    if (epgDateStr < today) return false;
+    const now = new Date();
+    return program.start > `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const isProgramReminded = (program: EpgProgram) => Boolean(
+    selected && isEpgReminderSet(reminders, epgReminderId(selected, source.key, epgDateStr, program.start)),
+  );
+
+  const toggleProgramReminder = (program: EpgProgram) => {
+    if (!selected) return;
+    const id = epgReminderId(selected, source.key, epgDateStr, program.start);
+    if (isEpgReminderSet(reminders, id)) {
+      const next = reminders.filter((item) => item.id !== id);
+      setReminders(next);
+      saveEpgReminders(next);
+      cancelAndroidEpgReminder(id);
+      notifyEpgRemindersChanged();
+      toast('已取消节目提醒', 'success');
+      return;
+    }
+    const triggerAt = epgReminderTime(epgDateStr, program.start);
+    if (!triggerAt || triggerAt <= Date.now()) {
+      toast('节目已开始，无法设置提醒', 'warning');
+      return;
+    }
+    const reminder: EpgReminder = {
+      id,
+      channelName: selected.name,
+      tvgId: selected.tvgId,
+      sourceKey: source.key,
+      sourceName: source.name,
+      date: epgDateStr,
+      start: program.start,
+      end: program.end,
+      title: program.title,
+      triggerAt,
+    };
+    const next = toggleEpgReminder(reminders, reminder);
+    setReminders(next);
+    saveEpgReminders(next);
+    notifyEpgRemindersChanged();
+    toast('已设置节目提醒，节目开始时通知', 'success');
+  };
 
   /* Android 返回键：全屏时先退出全屏 */
   useEffect(() => {
@@ -716,6 +783,16 @@ export default function Live() {
                       >
                         <span>{program.start}</span>
                         <span>{program.title}</span>
+                        {isFutureProgram(program) && (
+                          <button
+                            type="button"
+                            className={`live-epg-remind ${isProgramReminded(program) ? 'is-on' : ''}`}
+                            onClick={() => toggleProgramReminder(program)}
+                            aria-label={isProgramReminded(program) ? '取消节目提醒' : '设置节目提醒'}
+                          >
+                            <Icon name="bell" size={12} />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

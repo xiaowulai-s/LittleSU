@@ -41,7 +41,8 @@ export type IconName =
   | 'forward10'
   | 'skipNext'
   | 'pip'
-  | 'lock';
+  | 'lock'
+  | 'bell';
 
 const paths: Record<IconName, ReactNode> = {
   home: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V21h5v-6h4v6h5V9.5" /></>,
@@ -85,6 +86,7 @@ const paths: Record<IconName, ReactNode> = {
   skipNext: <><path d="M6 5.5 15 12l-9 6.5z" /><path d="M18 5v14" /></>,
   pip: <><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="12" y="12" width="7" height="6" rx="1" /></>,
   lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
+  bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
 };
 
 const filled: IconName[] = ['play', 'star', 'heart'];

@@ -14,6 +14,8 @@ interface LsuNativeBridge {
   setScreenBrightness?: (percent: number) => void;
   resetScreenBrightness?: () => void;
   openCastSettings?: () => void;
+  scheduleEpgReminder?: (id: string, triggerAtMs: number, title: string, body: string) => boolean;
+  cancelEpgReminder?: (id: string) => void;
 }
 
 function bridge(): LsuNativeBridge | null {
@@ -79,6 +81,30 @@ export function openAndroidCastSettings(): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** 预约 Android 原生节目提醒；应用被系统回收后仍由 AlarmManager 触发。 */
+export function scheduleAndroidEpgReminder(
+  id: string,
+  triggerAt: number,
+  title: string,
+  body: string,
+): boolean {
+  const native = bridge();
+  if (!native?.scheduleEpgReminder) return false;
+  try {
+    return native.scheduleEpgReminder(id, triggerAt, title, body) === true;
+  } catch {
+    return false;
+  }
+}
+
+export function cancelAndroidEpgReminder(id: string): void {
+  try {
+    bridge()?.cancelEpgReminder?.(id);
+  } catch {
+    /* 原生桥不可用时忽略 */
   }
 }
 

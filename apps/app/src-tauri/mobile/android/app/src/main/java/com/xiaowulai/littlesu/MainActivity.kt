@@ -1,7 +1,9 @@
 package com.xiaowulai.littlesu
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.DownloadManager
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -338,6 +340,54 @@ class MainActivity : TauriActivity() {
         }
         Toast.makeText(this@MainActivity, "当前系统没有投屏设置入口", Toast.LENGTH_SHORT).show()
       }
+    }
+
+    @JavascriptInterface
+    fun scheduleEpgReminder(id: String, triggerAtMs: Double, title: String, body: String): Boolean {
+      if (!triggerAtMs.isFinite() || triggerAtMs <= System.currentTimeMillis()) return false
+      ensureNotificationPermission()
+      return try {
+        val alarm = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pending = epgPendingIntent(id, title, body, true)
+        alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs.toLong(), pending)
+        true
+      } catch (_: Exception) {
+        false
+      }
+    }
+
+    @JavascriptInterface
+    fun cancelEpgReminder(id: String) {
+      try {
+        val alarm = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pending = epgPendingIntent(id)
+        alarm.cancel(pending)
+        pending.cancel()
+      } catch (_: Exception) {
+        /* ignore */
+      }
+    }
+
+    private fun epgPendingIntent(
+      id: String,
+      title: String = "",
+      body: String = "",
+      withExtras: Boolean = false,
+    ): PendingIntent {
+      val intent = Intent(this@MainActivity, EpgReminderReceiver::class.java).apply {
+        action = EpgReminderReceiver.ACTION_REMIND
+        if (withExtras) {
+          putExtra(EpgReminderReceiver.EXTRA_ID, id)
+          putExtra(EpgReminderReceiver.EXTRA_TITLE, title)
+          putExtra(EpgReminderReceiver.EXTRA_BODY, body)
+        }
+      }
+      return PendingIntent.getBroadcast(
+        this@MainActivity,
+        id.hashCode(),
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+      )
     }
 
     @JavascriptInterface

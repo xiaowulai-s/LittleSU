@@ -23,6 +23,11 @@ SERVICE = (
     'android:exported="false" android:foregroundServiceType="mediaPlayback" />'
 )
 
+EPG_RECEIVER = (
+    '<receiver android:name="com.xiaowulai.littlesu.EpgReminderReceiver" '
+    'android:exported="false" />'
+)
+
 
 def main() -> int:
     if not MANIFEST.exists():
@@ -46,6 +51,13 @@ def main() -> int:
             print("Cannot find </application> in AndroidManifest", file=sys.stderr)
             return 1
         text = text[:index] + f"        {SERVICE}\n" + text[index:]
+
+    if "EpgReminderReceiver" not in text:
+        index = text.rfind("</application>")
+        if index < 0:
+            print("Cannot find </application> in AndroidManifest", file=sys.stderr)
+            return 1
+        text = text[:index] + f"        {EPG_RECEIVER}\n" + text[index:]
 
     # 后台播放依赖系统画中画，需要给 MainActivity 打开 supportsPictureInPicture。
     if "supportsPictureInPicture" not in text:

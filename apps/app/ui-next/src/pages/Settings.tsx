@@ -161,6 +161,7 @@ export default function Settings() {
   const [editingLive, setEditingLive] = useState<number | 'new' | null>(null);
   const [liveName, setLiveName] = useState('');
   const [liveUrl, setLiveUrl] = useState('');
+  const [epgUrl, setEpgUrl] = useState(settings.customEpgUrl || '');
 
   useEffect(() => {
     if (requested && ['appearance', 'playback', 'sources', 'data', 'about'].includes(requested)) {
@@ -542,6 +543,46 @@ export default function Settings() {
                 ) : (
                   <Button size="sm" variant="secondary" icon="plus" onClick={startAddCustom}>新增自定义源</Button>
                 )}
+              </SettingCard>
+
+              <SettingCard title="自定义 EPG" description="填 XMLTV 地址后优先使用自建节目单；频道按 tvg-id 或名称匹配，失败自动回退 51zmt。">
+                <div className="custom-source-form">
+                  <input
+                    value={epgUrl}
+                    onChange={(event) => setEpgUrl(event.target.value)}
+                    placeholder="https://example.com/epg.xml"
+                    aria-label="自定义 EPG 地址"
+                  />
+                  <div className="custom-source-form-actions">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEpgUrl('');
+                        updateSettings({ customEpgUrl: '' });
+                        toast('已恢复 51zmt 节目单', 'success');
+                      }}
+                    >
+                      恢复默认
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      icon="check"
+                      onClick={() => {
+                        const url = epgUrl.trim();
+                        if (url && !/^https?:\/\//i.test(url)) {
+                          toast('EPG 地址需以 http:// 或 https:// 开头', 'warning');
+                          return;
+                        }
+                        updateSettings({ customEpgUrl: url });
+                        toast(url ? '已保存自定义 EPG' : '已恢复 51zmt 节目单', 'success');
+                      }}
+                    >
+                      保存
+                    </Button>
+                  </div>
+                </div>
               </SettingCard>
 
               <SettingCard title="自定义直播源" description="M3U / TXT 订阅，保存后出现在直播页；启用开关即时生效。">

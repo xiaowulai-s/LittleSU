@@ -12,6 +12,7 @@ import History from './pages/History';
 import Favorites from './pages/Favorites';
 import Settings from './pages/Settings';
 import Player from './pages/Player';
+import EpgReminderScheduler from './EpgReminderScheduler';
 
 function AppRoutes() {
   return (
@@ -204,6 +205,7 @@ function Prototype() {
 export default function App() {
   return (
     <AppProvider>
+      <EpgReminderScheduler />
       <Prototype />
     </AppProvider>
   );

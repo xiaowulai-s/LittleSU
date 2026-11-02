@@ -458,7 +458,7 @@ export interface EpgState {
 }
 
 /** 按频道拉取当天/次日节目单；仅在客户端内可用（浏览器内会被 CORS/混合内容拦截）。 */
-export function useEpg(channel: LiveChannel | undefined, date: string): EpgState {
+export function useEpg(channel: LiveChannel | undefined, date: string, customUrl = ''): EpgState {
   const [state, setState] = useState<EpgState>({ loading: false, data: null });
 
   useEffect(() => {
@@ -468,7 +468,7 @@ export function useEpg(channel: LiveChannel | undefined, date: string): EpgState
     }
     let cancelled = false;
     setState({ loading: true, data: null });
-    fetchEpg(channel, date)
+    fetchEpg(channel, date, customUrl)
       .then((data) => {
         if (!cancelled) setState({ loading: false, data });
       })
@@ -484,7 +484,7 @@ export function useEpg(channel: LiveChannel | undefined, date: string): EpgState
     return () => {
       cancelled = true;
     };
-  }, [channel?.id, channel?.name, channel?.tvgId, date]);
+  }, [channel?.id, channel?.name, channel?.tvgId, date, customUrl]);
 
   return state;
 }
