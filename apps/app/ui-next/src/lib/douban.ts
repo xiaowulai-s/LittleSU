@@ -54,9 +54,138 @@ export interface DoubanItem {
 }
 
 const cache = new Map<string, { at: number; items: DoubanItem[] }>();
+const detailCache = new Map<string, { at: number; value: DoubanDetail }>();
 
 export function clearDoubanCache(): void {
   cache.clear();
+  detailCache.clear();
+}
+
+export interface DoubanDetail {
+  id: string;
+  title: string;
+  searchTitle?: string;
+  originalTitle?: string;
+  year?: string;
+  rating: string;
+  cover: string;
+  intro?: string;
+  genres: string[];
+  directors: string[];
+  actors: string[];
+  countries: string[];
+  duration?: string;
+  episodes?: string;
+  shortComment?: string;
+  isTv: boolean;
+}
+
+function strings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (item && typeof item === 'object' && typeof (item as { name?: unknown }).name === 'string') {
+        return ((item as { name: string }).name).trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
+}
+
+/** 解析豆瓣 rexxar 详情接口。 */
+export function parseDoubanRexxar(data: Record<string, unknown>, isTv: boolean): DoubanDetail | null {
+  const id = String(data.id ?? '').trim();
+  const title = String(data.title ?? '').trim();
+  if (!id || !title) return null;
+  const pic = data.pic && typeof data.pic === 'object' ? data.pic as Record<string, unknown> : {};
+  const rating = data.rating && typeof data.rating === 'object' ? data.rating as Record<string, unknown> : {};
+  const durations = strings(data.durations);
+  const episodes = Number(data.episodes_count) || Number(data.webisode_count) || 0;
+  return {
+    id,
+    title,
+    searchTitle: title,
+    originalTitle: typeof data.original_title === 'string' ? data.original_title.trim() : undefined,
+    year: data.year ? String(data.year) : undefined,
+    rating: rating.value !== undefined && rating.value !== null ? String(rating.value) : '',
+    cover: String(pic.large ?? data.cover_url ?? data.cover ?? '').trim(),
+    intro: typeof data.intro === 'string' ? data.intro.trim() : undefined,
+    genres: strings(data.genres),
+    directors: strings(data.directors),
+    actors: strings(data.actors),
+    countries: strings(data.countries),
+    duration: durations.join(' / ') || undefined,
+    episodes: episodes > 0 ? `${episodes} 集` : undefined,
+    isTv,
+  };
+}
+
+/** 解析 movie.douban.com 的 subject_abstract 兜底接口。 */
+export function parseDoubanAbstract(data: Record<string, unknown>, isTv: boolean): DoubanDetail | null {
+  const subject = data.subject && typeof data.subject === 'object' ? data.subject as Record<string, unknown> : null;
+  if (!subject) return null;
+  const id = String(subject.id ?? '').trim();
+  const rawTitle = String(subject.title ?? '').trim();
+  if (!id || !rawTitle) return null;
+  const shortComment = subject.short_comment && typeof subject.short_comment === 'object'
+    ? subject.short_comment as Record<string, unknown>
+    : {};
+  const chineseTitle = rawTitle.match(/^[\u4e00-\u9fa5·：:！？、0-9]+/)?.[0];
+  return {
+    id,
+    title: rawTitle,
+    searchTitle: chineseTitle || rawTitle.replace(/\s*\(\d{4}\)\s*$/, ''),
+    year: subject.release_year ? String(subject.release_year) : undefined,
+    rating: subject.rate ? String(subject.rate) : '',
+    cover: '',
+    genres: strings(subject.types),
+    directors: strings(subject.directors),
+    actors: strings(subject.actors),
+    countries: subject.region ? [String(subject.region)] : [],
+    duration: subject.duration ? String(subject.duration) : undefined,
+    shortComment: typeof shortComment.content === 'string' ? shortComment.content.trim() : undefined,
+    isTv: subject.is_tv === true || isTv,
+  };
+}
+
+export async function fetchDoubanDetail(id: string, isTv = false): Promise<DoubanDetail> {
+  if (!isTauri()) throw new Error('豆瓣详情需要在客户端内加载');
+  const cacheKey = `${isTv ? 'tv' : 'movie'}:${id}`;
+  const hit = detailCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < CACHE_TTL) return hit.value;
+
+  const mobileHeaders = {
+    'User-Agent': DESKTOP_UA,
+    Referer: 'https://m.douban.com/',
+    Accept: 'application/json',
+  };
+  try {
+    const data = await httpJson(`https://m.douban.com/rexxar/api/v2/${isTv ? 'tv' : 'movie'}/${id}`, {
+      timeoutSecs: 15,
+      headers: mobileHeaders,
+    });
+    const detail = parseDoubanRexxar(data as Record<string, unknown>, isTv);
+    if (detail) {
+      detailCache.set(cacheKey, { at: Date.now(), value: detail });
+      return detail;
+    }
+  } catch {
+    /* 回退到 subject_abstract */
+  }
+
+  const data = await httpJson(`https://movie.douban.com/j/subject_abstract?subject_id=${encodeURIComponent(id)}`, {
+    timeoutSecs: 15,
+    headers: {
+      'User-Agent': DESKTOP_UA,
+      Referer: 'https://movie.douban.com/',
+      Accept: 'application/json',
+    },
+  });
+  const detail = parseDoubanAbstract(data as Record<string, unknown>, isTv);
+  if (!detail) throw new Error('豆瓣详情为空');
+  detailCache.set(cacheKey, { at: Date.now(), value: detail });
+  return detail;
 }
 
 export interface DoubanQuery {

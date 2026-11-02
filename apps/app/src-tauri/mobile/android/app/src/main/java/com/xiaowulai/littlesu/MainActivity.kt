@@ -37,6 +37,8 @@ class MainActivity : TauriActivity() {
   }
 
   private var webViewRef: WebView? = null
+  private var dlnaManager: DlnaManager? = null
+  private var castManager: CastManager? = null
   private var receiverRegistered = false
   private var notificationAsked = false
   private var resumeToken = 0
@@ -129,6 +131,8 @@ class MainActivity : TauriActivity() {
     webViewRef = webView
     webView.settings.mediaPlaybackRequiresUserGesture = false
     webView.addJavascriptInterface(NativeBridge(), "LsuNative")
+    dlnaManager = DlnaManager(this, webView)
+    castManager = CastManager(this, webView)
   }
 
   override fun onPause() {
@@ -208,6 +212,10 @@ class MainActivity : TauriActivity() {
       }
       PlaybackState.active = false
     }
+    dlnaManager?.shutdown()
+    dlnaManager = null
+    castManager?.shutdown()
+    castManager = null
     webViewRef = null
     activityPaused = false
     if (instance === this) instance = null
@@ -341,6 +349,26 @@ class MainActivity : TauriActivity() {
         Toast.makeText(this@MainActivity, "当前系统没有投屏设置入口", Toast.LENGTH_SHORT).show()
       }
     }
+
+    @JavascriptInterface
+    fun discoverDlna(): Boolean = dlnaManager?.discover() == true
+
+    @JavascriptInterface
+    fun castDlna(deviceId: String, url: String, title: String): Boolean =
+      dlnaManager?.cast(deviceId, url, title) == true
+
+    @JavascriptInterface
+    fun stopDlna(deviceId: String): Boolean = dlnaManager?.stop(deviceId) == true
+
+    @JavascriptInterface
+    fun chromecastAvailable(): Boolean = castManager?.isAvailable() == true
+
+    @JavascriptInterface
+    fun castChromecast(url: String, title: String): Boolean =
+      castManager?.cast(url, title) == true
+
+    @JavascriptInterface
+    fun stopChromecast(): Boolean = castManager?.stop() == true
 
     @JavascriptInterface
     fun scheduleEpgReminder(id: String, triggerAtMs: Double, title: String, body: String): Boolean {

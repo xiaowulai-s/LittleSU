@@ -16,6 +16,12 @@ interface LsuNativeBridge {
   openCastSettings?: () => void;
   scheduleEpgReminder?: (id: string, triggerAtMs: number, title: string, body: string) => boolean;
   cancelEpgReminder?: (id: string) => void;
+  discoverDlna?: () => boolean;
+  castDlna?: (deviceId: string, url: string, title: string) => boolean;
+  stopDlna?: (deviceId: string) => boolean;
+  chromecastAvailable?: () => boolean;
+  castChromecast?: (url: string, title: string) => boolean;
+  stopChromecast?: () => boolean;
 }
 
 function bridge(): LsuNativeBridge | null {
@@ -105,6 +111,54 @@ export function cancelAndroidEpgReminder(id: string): void {
     bridge()?.cancelEpgReminder?.(id);
   } catch {
     /* 原生桥不可用时忽略 */
+  }
+}
+
+export function discoverDlnaDevices(): boolean {
+  try {
+    return bridge()?.discoverDlna?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+export function castDlnaDevice(deviceId: string, url: string, title: string): boolean {
+  try {
+    return bridge()?.castDlna?.(deviceId, url, title) === true;
+  } catch {
+    return false;
+  }
+}
+
+export function stopDlnaDevice(deviceId: string): boolean {
+  try {
+    return bridge()?.stopDlna?.(deviceId) === true;
+  } catch {
+    return false;
+  }
+}
+
+export function hasChromecastSupport(): boolean {
+  try {
+    return bridge()?.chromecastAvailable?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+export function castChromecastDevice(url: string, title: string): boolean {
+  try {
+    return bridge()?.castChromecast?.(url, title) === true;
+  } catch {
+    return false;
+  }
+}
+
+export function stopChromecastDevice(): boolean {
+  try {
+    return bridge()?.stopChromecast?.() === true;
+  } catch {
+    return false;
   }
 }
 

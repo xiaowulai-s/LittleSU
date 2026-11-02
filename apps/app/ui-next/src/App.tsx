@@ -12,6 +12,7 @@ import History from './pages/History';
 import Favorites from './pages/Favorites';
 import Settings from './pages/Settings';
 import Player from './pages/Player';
+import DoubanDetailPage from './pages/DoubanDetail';
 import EpgReminderScheduler from './EpgReminderScheduler';
 
 function AppRoutes() {
@@ -24,6 +25,7 @@ function AppRoutes() {
       <Route path="/favorites" element={<Favorites />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/title/:id" element={<DetailPage />} />
+      <Route path="/douban/:id" element={<DoubanDetailPage />} />
       <Route path="/player/:id" element={<Player />} />
       <Route path="*" element={<Home />} />
     </Routes>

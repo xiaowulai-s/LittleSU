@@ -69,3 +69,4 @@
 37. v1.11.1 修复真机反馈：纵向亮度/音量手势在非全屏与全屏都生效，左右按播放画面分区；Android 改走原生 `AudioManager` 媒体音量与窗口亮度；直播页补齐同样的纵向手势；Android 始终显示投屏入口，WebView 不支持 Remote Playback 时打开系统投屏设置。
 38. v1.11.2 修复 Android WebView 吞掉视频上 `touchmove` 导致纵向手势无 HUD：点播/直播画面新增透明手势层接管触摸，控制条与播放按钮保持更高层级；亮度/音量数值逻辑不变。
 39. v1.12.0 新增 EPG 提醒与自定义 EPG：直播未来节目可设提醒并持久化，Android 通过 AlarmManager + 通知触发（应用回收后仍有效），应用内 Toast 兜底；设置可填 XMLTV，按 tvg-id/频道名匹配、30MB 上限与 30 分钟缓存，失败回退 51zmt。
+40. v1.13.0 新增豆瓣条目详情与原生投屏：豆瓣榜单卡片进入详情页（rexxar + subject_abstract 双通道，简介/导演/主演/评分并可跳搜索）；Android 原生 DLNA 发现与 AVTransport 播放/停止，以及 Google Cast SDK 默认接收器 Chromecast 投屏面板。

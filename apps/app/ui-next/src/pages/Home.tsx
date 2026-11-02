@@ -248,7 +248,7 @@ export default function Home() {
                   type="button"
                   key={item.id}
                   className="douban-card"
-                  onClick={() => navigate(`/search?q=${encodeURIComponent(item.title)}`)}
+                  onClick={() => navigate(`/douban/${encodeURIComponent(item.id)}?tv=${item.isTv ? 1 : 0}`)}
                 >
                   <span className="douban-cover">
                     <span className="douban-cover-mark">{item.title.slice(0, 1)}</span>

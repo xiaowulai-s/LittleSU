@@ -13,6 +13,12 @@ import {
   stopAndroidPlayback,
   updateAndroidPlayback,
   cancelAndroidEpgReminder,
+  castChromecastDevice,
+  castDlnaDevice,
+  discoverDlnaDevices,
+  hasChromecastSupport,
+  stopChromecastDevice,
+  stopDlnaDevice,
 } from './androidNative';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -83,6 +89,25 @@ describe('androidNative bridge', () => {
     vi.stubGlobal('window', { LsuNative: { openCastSettings } });
     expect(openAndroidCastSettings()).toBe(true);
     expect(openCastSettings).toHaveBeenCalled();
+  });
+
+  it('delegates native DLNA and Chromecast calls', () => {
+    const bridge = {
+      discoverDlna: vi.fn(() => true),
+      castDlna: vi.fn(() => true),
+      stopDlna: vi.fn(() => true),
+      chromecastAvailable: vi.fn(() => true),
+      castChromecast: vi.fn(() => true),
+      stopChromecast: vi.fn(() => true),
+    };
+    vi.stubGlobal('window', { LsuNative: bridge });
+    expect(discoverDlnaDevices()).toBe(true);
+    expect(castDlnaDevice('tv-1', 'https://example.com/a.m3u8', '新闻')).toBe(true);
+    expect(bridge.castDlna).toHaveBeenCalledWith('tv-1', 'https://example.com/a.m3u8', '新闻');
+    expect(stopDlnaDevice('tv-1')).toBe(true);
+    expect(hasChromecastSupport()).toBe(true);
+    expect(castChromecastDevice('https://example.com/a.m3u8', '新闻')).toBe(true);
+    expect(stopChromecastDevice()).toBe(true);
   });
 
   it('schedules and cancels Android EPG reminders through the bridge', () => {

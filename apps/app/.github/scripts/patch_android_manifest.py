@@ -11,6 +11,10 @@ import sys
 MANIFEST = Path("src-tauri/gen/android/app/src/main/AndroidManifest.xml")
 
 PERMISSIONS = [
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.ACCESS_WIFI_STATE",
+    "android.permission.CHANGE_WIFI_MULTICAST_STATE",
     "android.permission.REQUEST_INSTALL_PACKAGES",
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
@@ -26,6 +30,11 @@ SERVICE = (
 EPG_RECEIVER = (
     '<receiver android:name="com.xiaowulai.littlesu.EpgReminderReceiver" '
     'android:exported="false" />'
+)
+
+CAST_META = (
+    '<meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME" '
+    'android:value="com.xiaowulai.littlesu.CastOptionsProvider" />'
 )
 
 
@@ -59,6 +68,13 @@ def main() -> int:
             return 1
         text = text[:index] + f"        {EPG_RECEIVER}\n" + text[index:]
 
+    if "OPTIONS_PROVIDER_CLASS_NAME" not in text:
+        index = text.rfind("</application>")
+        if index < 0:
+            print("Cannot find </application> in AndroidManifest", file=sys.stderr)
+            return 1
+        text = text[:index] + f"        {CAST_META}\n" + text[index:]
+
     # 后台播放依赖系统画中画，需要给 MainActivity 打开 supportsPictureInPicture。
     if "supportsPictureInPicture" not in text:
         for pattern in (
@@ -76,6 +92,17 @@ def main() -> int:
                 break
         else:
             print("WARNING: MainActivity activity not found; PiP is unavailable", file=sys.stderr)
+
+    # DLNA 的 SSDP/设备描述和控制请求走局域网 http，需要允许 cleartext。
+    if "usesCleartextTraffic" not in text:
+        if re.search(r"<application\b", text):
+            text = re.sub(
+                r"<application\b",
+                '<application android:usesCleartextTraffic="true"',
+                text,
+                count=1,
+            )
+            print("Enabled cleartext traffic for DLNA")
 
     MANIFEST.write_text(text, encoding="utf-8")
     print(f"Patched {MANIFEST}")

@@ -33,17 +33,19 @@ import {
 } from '../lib/epgReminders';
 import type { EpgReminder } from '../lib/epgReminders';
 import { EPG_REMINDERS_CHANGED, notifyEpgRemindersChanged } from '../EpgReminderScheduler';
+import CastSheet from '../CastSheet';
+import { useDlna } from '../lib/dlna';
 import { clampBrightness, clampVolume, gestureRatio, tapSide } from '../lib/gesture';
 import {
   cancelAndroidEpgReminder,
   getAndroidMediaVolume,
   getAndroidScreenBrightness,
   hasAndroidMediaBridge,
-  openAndroidCastSettings,
   resetAndroidScreenBrightness,
   setAndroidMediaVolume,
   setAndroidScreenBrightness,
   stopAndroidPlayback,
+  stopDlnaDevice,
   updateAndroidPlayback,
 } from '../lib/androidNative';
 import { httpText, isTauri } from '../lib/env';
@@ -105,6 +107,8 @@ export default function Live() {
   const [muted, setMuted] = useState(false);
   const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
   const androidMediaBridge = hasAndroidMediaBridge();
+  const dlna = useDlna();
+  const [castOpen, setCastOpen] = useState(false);
   const [brightness, setBrightness] = useState(1);
   const [gestureHud, setGestureHud] = useState<{ kind: 'brightness' | 'volume'; value: number } | null>(null);
   const gestureRef = useRef<{ kind: 'brightness' | 'volume'; startY: number; startValue: number; startX: number; moved: boolean } | null>(null);
@@ -324,6 +328,17 @@ export default function Live() {
     if (!androidMediaBridge) return;
     return () => resetAndroidScreenBrightness();
   }, [androidMediaBridge]);
+
+  useEffect(() => {
+    if (dlna.error) toast(dlna.error, 'warning');
+  }, [dlna.error, toast]);
+
+  useEffect(() => {
+    const deviceId = dlna.castState?.deviceId;
+    return () => {
+      if (deviceId) stopDlnaDevice(deviceId);
+    };
+  }, [dlna.castState?.deviceId]);
 
   useEffect(() => {
     setMediaPlaybackState(playing ? 'playing' : 'paused');
@@ -712,22 +727,22 @@ export default function Live() {
                   aria-label="投屏"
                   onClick={async () => {
                     const video = videoRef.current as (HTMLVideoElement & { remote?: { prompt: () => Promise<void> } }) | null;
+                    if (device === 'android') {
+                      if (!selected?.url) {
+                        toast('请先选择可播放的频道', 'warning');
+                        return;
+                      }
+                      setCastOpen(true);
+                      return;
+                    }
                     if (video?.remote) {
                       try {
                         await video.remote.prompt();
                         return;
                       } catch {
-                        if (device === 'android' && openAndroidCastSettings()) {
-                          toast('未找到网页投屏设备，已打开系统投屏设置', 'success');
-                          return;
-                        }
                         toast('未找到可投屏设备', 'warning');
                         return;
                       }
-                    }
-                    if (device === 'android' && openAndroidCastSettings()) {
-                      toast('已打开系统投屏设置，请选择电视', 'success');
-                      return;
                     }
                     toast('当前环境不支持投屏', 'warning');
                   }}
@@ -867,6 +882,18 @@ export default function Live() {
           )}
         </aside>
       </div>
+      <CastSheet
+        open={castOpen}
+        url={selected?.url || ''}
+        title={selected?.name || '直播'}
+        controller={dlna}
+        onClose={() => setCastOpen(false)}
+        onCast={(device) => {
+          videoRef.current?.pause();
+          setPlaying(false);
+          toast(`正在投屏到 ${device.name}`, 'success');
+        }}
+      />
     </div>
   );
 }

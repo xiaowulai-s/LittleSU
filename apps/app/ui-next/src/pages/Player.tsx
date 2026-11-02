@@ -10,11 +10,11 @@ import {
   getAndroidMediaVolume,
   getAndroidScreenBrightness,
   hasAndroidMediaBridge,
-  openAndroidCastSettings,
   resetAndroidScreenBrightness,
   setAndroidMediaVolume,
   setAndroidScreenBrightness,
   stopAndroidPlayback,
+  stopDlnaDevice,
   updateAndroidPlayback,
 } from '../lib/androidNative';
 import { refreshTitleDetail, useDetail } from '../lib/hooks';
@@ -32,6 +32,8 @@ import type { EpisodeProgress } from '../lib/storage';
 import { httpText, isTauri } from '../lib/env';
 import { setFullscreen } from '../lib/window';
 import { Button, Chip, Rating } from '../ui';
+import CastSheet from '../CastSheet';
+import { useDlna } from '../lib/dlna';
 
 const speeds = [1, 1.25, 1.5, 2];
 const subtitleSizes = [
@@ -165,6 +167,8 @@ export default function Player() {
   const [pipSupported, setPipSupported] = useState(false);
   const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
   const androidMediaBridge = hasAndroidMediaBridge();
+  const dlna = useDlna();
+  const [castOpen, setCastOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const subtitleInputRef = useRef<HTMLInputElement>(null);
@@ -528,6 +532,17 @@ export default function Player() {
     if (!androidMediaBridge) return;
     return () => resetAndroidScreenBrightness();
   }, [androidMediaBridge]);
+
+  useEffect(() => {
+    if (dlna.error) toast(dlna.error, 'warning');
+  }, [dlna.error, toast]);
+
+  useEffect(() => {
+    const deviceId = dlna.castState?.deviceId;
+    return () => {
+      if (deviceId) stopDlnaDevice(deviceId);
+    };
+  }, [dlna.castState?.deviceId]);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -1650,28 +1665,28 @@ export default function Player() {
                           onClick={async () => {
                             const video = videoRef.current as (HTMLVideoElement & { remote?: { prompt: () => Promise<void> } }) | null;
                             setSheetOpen(false);
+                            if (device === 'android') {
+                              if (!streamUrl) {
+                                toast('播放地址未就绪，暂不能投屏', 'warning');
+                                return;
+                              }
+                              setCastOpen(true);
+                              return;
+                            }
                             if (video?.remote) {
                               try {
                                 await video.remote.prompt();
                                 return;
                               } catch {
-                                if (device === 'android' && openAndroidCastSettings()) {
-                                  toast('未找到网页投屏设备，已打开系统投屏设置', 'success');
-                                  return;
-                                }
                                 toast('未找到可投屏设备', 'warning');
                                 return;
                               }
-                            }
-                            if (device === 'android' && openAndroidCastSettings()) {
-                              toast('已打开系统投屏设置，请选择电视', 'success');
-                              return;
                             }
                             toast('当前环境不支持投屏', 'warning');
                           }}
                         >
                           <Icon name="wifi" size={16} />
-                          投屏
+                          {dlna.castState ? '投屏中' : '投屏'}
                         </button>
                       )}
                       {pipSupported && (
@@ -1704,6 +1719,18 @@ export default function Player() {
           const file = event.target.files?.[0];
           if (file) void handleSubtitleFile(file);
           event.target.value = '';
+        }}
+      />
+      <CastSheet
+        open={castOpen}
+        url={streamUrl}
+        title={`${title.name}${current?.name ? ` · ${current.name}` : ''}`}
+        controller={dlna}
+        onClose={() => setCastOpen(false)}
+        onCast={(device) => {
+          videoRef.current?.pause();
+          setPlaying(false);
+          toast(`正在投屏到 ${device.name}`, 'success');
         }}
       />
     </div>
