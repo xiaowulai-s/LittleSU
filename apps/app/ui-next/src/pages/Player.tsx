@@ -234,8 +234,15 @@ export default function Player() {
   useEffect(() => {
     const media = window.matchMedia('(orientation: portrait)');
     const onChange = (event: MediaQueryListEvent) => setPortrait(event.matches);
+    const onResize = () => setPortrait(window.matchMedia('(orientation: portrait)').matches);
     media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      media.removeEventListener('change', onChange);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
   }, []);
 
   /* 优先请求系统横屏；WebView 不支持时由 CSS 旋转兜底 */
@@ -769,6 +776,10 @@ export default function Player() {
     if (device === 'android') {
       setCssFullscreen(next);
       setFullscreenState(next);
+      const syncOrientation = () => setPortrait(window.matchMedia('(orientation: portrait)').matches);
+      syncOrientation();
+      window.setTimeout(syncOrientation, 300);
+      window.setTimeout(syncOrientation, 800);
       if (next && portrait) toast('已横向铺满，请旋转手机观看', 'success');
       return;
     }
@@ -999,7 +1010,7 @@ export default function Player() {
   };
 
   const onSurfaceTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (locked || sheetOpen || rotateLandscape) return;
+    if (locked || sheetOpen) return;
     const target = event.target as HTMLElement;
     if (target.closest('.video-controls, .player-sheet-layer, .player-unlock, .video-play-big, .video-error, .video-center')) return;
     const touch = event.touches[0];

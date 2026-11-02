@@ -145,8 +145,15 @@ export default function Live() {
   useEffect(() => {
     const media = window.matchMedia('(orientation: portrait)');
     const onChange = (event: MediaQueryListEvent) => setPortrait(event.matches);
+    const onResize = () => setPortrait(window.matchMedia('(orientation: portrait)').matches);
     media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      media.removeEventListener('change', onChange);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -159,6 +166,10 @@ export default function Live() {
   const toggleFullscreen = () => {
     const next = !cssFullscreen;
     setCssFullscreen(next);
+    const syncOrientation = () => setPortrait(window.matchMedia('(orientation: portrait)').matches);
+    syncOrientation();
+    window.setTimeout(syncOrientation, 300);
+    window.setTimeout(syncOrientation, 800);
     if (next && device === 'android' && portrait) toast('已横向铺满，请旋转手机观看', 'success');
   };
 
@@ -484,7 +495,6 @@ export default function Live() {
   };
 
   const onLiveTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
-    if (rotateLandscape) return;
     const target = event.target as HTMLElement;
     if (target.closest('.live-screen-controls, .live-screen-center, .video-error, .live-screen-top')) return;
     const touch = event.touches[0];
