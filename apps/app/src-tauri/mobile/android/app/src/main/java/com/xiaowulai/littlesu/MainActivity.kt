@@ -371,6 +371,25 @@ class MainActivity : TauriActivity() {
     fun stopChromecast(): Boolean = castManager?.stop() == true
 
     @JavascriptInterface
+    fun enterPipMode(): Boolean {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+      return try {
+        runOnUiThread {
+          try {
+            enterPictureInPictureMode(
+              PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build(),
+            )
+          } catch (_: Exception) {
+            /* 非前台或系统不允许时忽略 */
+          }
+        }
+        true
+      } catch (_: Exception) {
+        false
+      }
+    }
+
+    @JavascriptInterface
     fun scheduleEpgReminder(id: String, triggerAtMs: Double, title: String, body: String): Boolean {
       if (!triggerAtMs.isFinite() || triggerAtMs <= System.currentTimeMillis()) return false
       ensureNotificationPermission()

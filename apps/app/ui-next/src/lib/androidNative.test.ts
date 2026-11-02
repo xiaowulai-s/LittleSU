@@ -16,7 +16,9 @@ import {
   castChromecastDevice,
   castDlnaDevice,
   discoverDlnaDevices,
+  hasAndroidPipSupport,
   hasChromecastSupport,
+  enterAndroidPip,
   stopChromecastDevice,
   stopDlnaDevice,
 } from './androidNative';
@@ -89,6 +91,14 @@ describe('androidNative bridge', () => {
     vi.stubGlobal('window', { LsuNative: { openCastSettings } });
     expect(openAndroidCastSettings()).toBe(true);
     expect(openCastSettings).toHaveBeenCalled();
+  });
+
+  it('enters Android picture-in-picture through the bridge', () => {
+    const enterPipMode = vi.fn(() => true);
+    vi.stubGlobal('window', { LsuNative: { enterPipMode } });
+    expect(hasAndroidPipSupport()).toBe(true);
+    expect(enterAndroidPip()).toBe(true);
+    expect(enterPipMode).toHaveBeenCalled();
   });
 
   it('delegates native DLNA and Chromecast calls', () => {

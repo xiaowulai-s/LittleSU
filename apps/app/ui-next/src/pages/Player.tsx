@@ -7,9 +7,11 @@ import { Icon } from '../icons';
 import { useApp } from '../store';
 import { historyToTitle } from '../lib/adapters';
 import {
+  enterAndroidPip,
   getAndroidMediaVolume,
   getAndroidScreenBrightness,
   hasAndroidMediaBridge,
+  hasAndroidPipSupport,
   resetAndroidScreenBrightness,
   setAndroidMediaVolume,
   setAndroidScreenBrightness,
@@ -28,6 +30,8 @@ import { setMediaHandlers, setMediaInfo, setMediaPlaybackState } from '../lib/me
 import { CLIENT_RELEASE_URL, shareContent } from '../lib/share';
 import { clampSubtitleOffset, normalizeSubtitle, shiftVtt } from '../lib/subtitles';
 import { mergeEpisodeProgress, resumePositionFor } from '../lib/progress';
+import { clearSkipMarks, loadSkipMarks, saveSkipMarks, shouldSkipIntro, shouldSkipOutro } from '../lib/skipMarks';
+import type { SkipMarks } from '../lib/skipMarks';
 import type { EpisodeProgress } from '../lib/storage';
 import { httpText, isTauri } from '../lib/env';
 import { setFullscreen } from '../lib/window';
@@ -127,11 +131,19 @@ export default function Player() {
 
   const [episode, setEpisode] = useState(() => routeEpisodeIndex + 1);
   const progressMapRef = useRef<Record<string, EpisodeProgress>>(historyRecord?.episodeProgress ?? {});
+  const [skipMarks, setSkipMarks] = useState<SkipMarks>(() => loadSkipMarks(rawKey));
+  const introSkippedRef = useRef(false);
+  const outroSkippedRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const currentTimeRef = useRef(0);
   currentTimeRef.current = currentTime;
+
+  useEffect(() => {
+    setSkipMarks(loadSkipMarks(rawKey));
+  }, [rawKey]);
+
   const [duration, setDuration] = useState(0);
   const [speedIndex, setSpeedIndex] = useState(() => {
     const index = speeds.indexOf(settings.speed);
@@ -167,6 +179,7 @@ export default function Player() {
   const [pipSupported, setPipSupported] = useState(false);
   const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
   const androidMediaBridge = hasAndroidMediaBridge();
+  const androidPipAvailable = hasAndroidPipSupport();
   const dlna = useDlna();
   const [castOpen, setCastOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -203,6 +216,11 @@ export default function Player() {
   const current = episodes[episode - 1];
   const sourceUrl = current?.url || '';
   const streamUrl = lineAligned ? playableUrl || (/\.m3u8/i.test(sourceUrl) ? sourceUrl : '') : '';
+
+  useEffect(() => {
+    introSkippedRef.current = false;
+    outroSkippedRef.current = false;
+  }, [streamUrl, episode]);
   const isMock = demoTitle && !streamUrl && !resolving;
   const isFavorite = favoriteKeys.has(rawKey);
   const key = rawKey;
@@ -1002,6 +1020,46 @@ export default function Player() {
     }
   };
 
+  const markIntroEnd = () => {
+    const video = videoRef.current;
+    if (!video || isMock) return;
+    const duration = video.duration || 0;
+    const value = Math.min(video.currentTime, duration > 0 ? Math.max(0, duration - 3) : video.currentTime);
+    if (!Number.isFinite(value) || value < 3) {
+      toast('请播放几秒后再标记片头结束', 'warning');
+      return;
+    }
+    const next = { ...skipMarks, introEnd: value };
+    setSkipMarks(next);
+    saveSkipMarks(rawKey, next);
+    introSkippedRef.current = true;
+    toast(`片头结束：${formatTime(value)}`, 'success');
+  };
+
+  const markOutroStart = () => {
+    const video = videoRef.current;
+    if (!video || isMock) return;
+    const duration = video.duration || 0;
+    const value = Math.max(3, video.currentTime);
+    if (!duration || value > duration - 3) {
+      toast('请在片尾开始前标记', 'warning');
+      return;
+    }
+    const next = { ...skipMarks, outroStart: value };
+    setSkipMarks(next);
+    saveSkipMarks(rawKey, next);
+    outroSkippedRef.current = true;
+    toast(`片尾开始：${formatTime(value)}`, 'success');
+  };
+
+  const clearSkips = () => {
+    setSkipMarks({ introEnd: 0, outroStart: 0 });
+    clearSkipMarks(rawKey);
+    introSkippedRef.current = false;
+    outroSkippedRef.current = false;
+    toast('已清除片头/片尾标记', 'success');
+  };
+
   const clearLongPressTimer = () => {
     if (longPressTimerRef.current !== null) {
       window.clearTimeout(longPressTimerRef.current);
@@ -1289,6 +1347,23 @@ export default function Player() {
                 setCurrentTime(video.currentTime);
                 setDuration(video.duration || 0);
                 setProgress(video.duration ? (video.currentTime / video.duration) * 100 : 0);
+                if (!isMock && settings.autoSkip && !introSkippedRef.current && shouldSkipIntro(video.currentTime, skipMarks)) {
+                  introSkippedRef.current = true;
+                  video.currentTime = skipMarks.introEnd;
+                  toast('已跳过片头', 'success');
+                  return;
+                }
+                if (!isMock && settings.autoSkip && !outroSkippedRef.current && shouldSkipOutro(video.currentTime, video.duration || 0, skipMarks)) {
+                  outroSkippedRef.current = true;
+                  if (settings.autoNext && episode < episodes.length) {
+                    switchEpisode(episode);
+                    toast('已跳过片尾，播放下一集', 'success');
+                  } else {
+                    video.pause();
+                    setPlaying(false);
+                    toast('已跳过片尾', 'success');
+                  }
+                }
               }}
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
@@ -1700,11 +1775,44 @@ export default function Player() {
                           {dlna.castState ? '投屏中' : '投屏'}
                         </button>
                       )}
-                      {pipSupported && (
-                        <button type="button" onClick={() => { setSheetOpen(false); void togglePip(); }}>
+                      {(pipSupported || androidPipAvailable) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (androidPipAvailable) {
+                              if (!playing) {
+                                toast('请先开始播放再进入画中画', 'warning');
+                                return;
+                              }
+                              setSheetOpen(false);
+                              if (!enterAndroidPip()) toast('当前环境不支持画中画', 'warning');
+                              return;
+                            }
+                            setSheetOpen(false);
+                            void togglePip();
+                          }}
+                        >
                           <Icon name="pip" size={16} />
                           画中画
                         </button>
+                      )}
+                      {!isMock && (
+                        <>
+                          <button type="button" onClick={markIntroEnd}>
+                            <Icon name="clock" size={16} />
+                            片头结束 {skipMarks.introEnd ? formatTime(skipMarks.introEnd) : '未标记'}
+                          </button>
+                          <button type="button" onClick={markOutroStart}>
+                            <Icon name="clock" size={16} />
+                            片尾开始 {skipMarks.outroStart ? formatTime(skipMarks.outroStart) : '未标记'}
+                          </button>
+                          {(skipMarks.introEnd > 0 || skipMarks.outroStart > 0) && (
+                            <button type="button" onClick={clearSkips}>
+                              <Icon name="close" size={16} />
+                              清除跳过
+                            </button>
+                          )}
+                        </>
                       )}
                       {cssFullscreen && (
                         <button type="button" onClick={lockScreen}>
@@ -1715,6 +1823,7 @@ export default function Player() {
                     </div>
                     <p className="player-sheet-tip">
                       画面左侧上下滑调亮度，右侧上下滑调音量（安卓走系统音量）；全屏锁定后可避免误触。
+                      播放到片头结束/片尾开始时点上方按钮标记，开启自动跳过后生效。
                       快捷键：空格 播放/暂停 · ←→ 快退/快进 · ↑↓ 音量 · M 静音 · F 全屏。
                     </p>
                   </div>

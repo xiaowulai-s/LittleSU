@@ -405,6 +405,9 @@ export default function Settings() {
               <SettingRow label="自动连播" description="一集结束后自动播放下一集">
                 <Switch checked={settings.autoNext} onChange={(value) => updateSettings({ autoNext: value })} />
               </SettingRow>
+              <SettingRow label="自动跳过片头/片尾" description="播放到已标记的片头结束或片尾开始位置时自动跳过">
+                <Switch checked={settings.autoSkip} onChange={(value) => updateSettings({ autoSkip: value })} />
+              </SettingRow>
               <SettingRow label="记忆播放进度" description="下次打开时从上次位置继续">
                 <Switch checked={settings.remember} onChange={(value) => updateSettings({ remember: value })} />
               </SettingRow>

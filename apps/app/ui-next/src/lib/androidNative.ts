@@ -22,6 +22,7 @@ interface LsuNativeBridge {
   chromecastAvailable?: () => boolean;
   castChromecast?: (url: string, title: string) => boolean;
   stopChromecast?: () => boolean;
+  enterPipMode?: () => boolean;
 }
 
 function bridge(): LsuNativeBridge | null {
@@ -157,6 +158,18 @@ export function castChromecastDevice(url: string, title: string): boolean {
 export function stopChromecastDevice(): boolean {
   try {
     return bridge()?.stopChromecast?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+export function hasAndroidPipSupport(): boolean {
+  return Boolean(bridge()?.enterPipMode);
+}
+
+export function enterAndroidPip(): boolean {
+  try {
+    return bridge()?.enterPipMode?.() === true;
   } catch {
     return false;
   }
