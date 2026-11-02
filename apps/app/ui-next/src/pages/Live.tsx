@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, TouchEvent as ReactTouchEvent } from 'react';
 import Hls from 'hls.js';
 import { channels as mockChannelData, liveSources } from '../data';
 import { Icon } from '../icons';
@@ -22,7 +22,18 @@ import { loadLiveRecent, recordLiveRecent, saveLiveRecent } from '../lib/liveRec
 import type { LiveRecent } from '../lib/liveRecent';
 import { useLivePlaylist, useEpg } from '../lib/hooks';
 import { currentProgram, epgDate, nextProgram } from '../lib/epg';
-import { stopAndroidPlayback, updateAndroidPlayback } from '../lib/androidNative';
+import { clampBrightness, clampVolume, gestureRatio, tapSide } from '../lib/gesture';
+import {
+  getAndroidMediaVolume,
+  getAndroidScreenBrightness,
+  hasAndroidMediaBridge,
+  openAndroidCastSettings,
+  resetAndroidScreenBrightness,
+  setAndroidMediaVolume,
+  setAndroidScreenBrightness,
+  stopAndroidPlayback,
+  updateAndroidPlayback,
+} from '../lib/androidNative';
 import { httpText, isTauri } from '../lib/env';
 import { Button, Chip } from '../ui';
 
@@ -53,7 +64,7 @@ function ChannelLogo({ name, logo }: { name: string; logo?: string }) {
 }
 
 export default function Live() {
-  const { toast, device, customLiveSources, settings } = useApp();
+  const { toast, device, customLiveSources, settings, updateSettings } = useApp();
   const [sourceIndex, setSourceIndex] = useState(0);
   const [group, setGroup] = useState('全部');
   const [query, setQuery] = useState('');
@@ -80,6 +91,13 @@ export default function Live() {
   const [showRecent, setShowRecent] = useState(false);
   const [muted, setMuted] = useState(false);
   const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
+  const androidMediaBridge = hasAndroidMediaBridge();
+  const [brightness, setBrightness] = useState(1);
+  const [gestureHud, setGestureHud] = useState<{ kind: 'brightness' | 'volume'; value: number } | null>(null);
+  const gestureRef = useRef<{ kind: 'brightness' | 'volume'; startY: number; startValue: number; startX: number; moved: boolean } | null>(null);
+  const hudTimer = useRef<number | null>(null);
+  const lastNativeBrightnessRef = useRef(-1);
+  const lastNativeVolumeRef = useRef(-1);
   const [portrait, setPortrait] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia('(orientation: portrait)').matches : false,
   );
@@ -232,8 +250,13 @@ export default function Live() {
     const video = videoRef.current;
     if (!video) return;
     video.muted = muted;
-    video.volume = settings.volume;
-  }, [muted, settings.volume, selected?.id]);
+    video.volume = muted ? 0 : androidMediaBridge ? 1 : settings.volume;
+  }, [muted, settings.volume, selected?.id, androidMediaBridge]);
+
+  useEffect(() => {
+    if (!androidMediaBridge) return;
+    return () => resetAndroidScreenBrightness();
+  }, [androidMediaBridge]);
 
   useEffect(() => {
     setMediaPlaybackState(playing ? 'playing' : 'paused');
@@ -372,6 +395,89 @@ export default function Live() {
     }
   };
 
+  const flashHud = (kind: 'brightness' | 'volume', value: number) => {
+    setGestureHud({ kind, value });
+    if (hudTimer.current) window.clearTimeout(hudTimer.current);
+    hudTimer.current = window.setTimeout(() => setGestureHud(null), 700);
+  };
+
+  const onLiveTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
+    if (rotateLandscape) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('.live-screen-controls, .live-screen-center, .video-error, .live-screen-top')) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const side = tapSide(touch.clientX - rect.left, rect.width);
+    const nativeBrightness = androidMediaBridge ? getAndroidScreenBrightness() : null;
+    const nativeVolume = androidMediaBridge ? getAndroidMediaVolume() : null;
+    gestureRef.current = {
+      kind: side === 'left' ? 'brightness' : 'volume',
+      startY: touch.clientY,
+      startValue: side === 'left'
+        ? (nativeBrightness !== null ? nativeBrightness / 100 : brightness)
+        : (nativeVolume !== null ? nativeVolume / 100 : (videoRef.current?.volume ?? settings.volume)),
+      startX: touch.clientX,
+      moved: false,
+    };
+    lastNativeBrightnessRef.current = -1;
+    lastNativeVolumeRef.current = -1;
+  };
+
+  const onLiveTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    const touch = event.touches[0];
+    if (!gesture || !touch) return;
+    if (!gesture.moved && (Math.abs(touch.clientX - gesture.startX) > 8 || Math.abs(touch.clientY - gesture.startY) > 8)) {
+      gesture.moved = true;
+    }
+    if (!gesture.moved) return;
+    const delta = gestureRatio(gesture.startY, touch.clientY, window.innerHeight);
+    if (gesture.kind === 'brightness') {
+      const value = androidMediaBridge
+        ? Math.min(1, Math.max(0.05, gesture.startValue + delta * 1.3))
+        : clampBrightness(gesture.startValue + delta * 1.3);
+      if (androidMediaBridge) {
+        const percent = Math.round(value * 100);
+        if (percent !== lastNativeBrightnessRef.current) {
+          lastNativeBrightnessRef.current = percent;
+          setAndroidScreenBrightness(percent);
+        }
+      } else {
+        setBrightness(value);
+      }
+      flashHud('brightness', value);
+      return;
+    }
+    const value = clampVolume(gesture.startValue + delta);
+    const video = videoRef.current;
+    if (androidMediaBridge) {
+      const percent = Math.round(value * 100);
+      if (percent !== lastNativeVolumeRef.current) {
+        lastNativeVolumeRef.current = percent;
+        setAndroidMediaVolume(percent);
+      }
+      if (video) {
+        video.volume = value === 0 ? 0 : 1;
+        video.muted = value === 0;
+      }
+    } else if (video) {
+      video.volume = value;
+      video.muted = value === 0;
+    }
+    setMuted(value === 0);
+    flashHud('volume', value);
+  };
+
+  const onLiveTouchEnd = () => {
+    const gesture = gestureRef.current;
+    gestureRef.current = null;
+    if (!gesture || !gesture.moved) return;
+    if (gesture.kind === 'volume' && !androidMediaBridge) {
+      updateSettings({ volume: videoRef.current?.volume ?? settings.volume });
+    }
+  };
+
   /* Android 前台服务：直播后台播放、播放通知与进度 */
   useEffect(() => {
     if (device !== 'android' || !isTauri() || !selected) return;
@@ -463,13 +569,21 @@ export default function Live() {
 
       <div className="live-layout">
         <section className="live-player-column">
-          <div className={`live-screen ${playing ? 'is-playing' : ''}`} style={{ '--h': hue } as CSSProperties}>
+          <div
+            className={`live-screen ${playing ? 'is-playing' : ''}`}
+            style={{ '--h': hue } as CSSProperties}
+            onTouchStart={onLiveTouchStart}
+            onTouchMove={onLiveTouchMove}
+            onTouchEnd={onLiveTouchEnd}
+            onTouchCancel={onLiveTouchEnd}
+          >
             <div className="live-screen-bg" />
             <div className="live-screen-glow" />
             <video
               ref={videoRef}
               className={`video-el ${selected?.url ? '' : 'is-hidden'}`}
               playsInline
+              style={{ filter: !androidMediaBridge && brightness !== 1 ? `brightness(${brightness})` : undefined }}
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onError={() => {
@@ -506,6 +620,13 @@ export default function Live() {
                 </button>
               </div>
             )}
+            {gestureHud && (
+              <div className="player-gesture-hud" aria-hidden="true">
+                <Icon name={gestureHud.kind === 'brightness' ? 'sun' : 'volume'} size={20} />
+                <strong>{Math.round(gestureHud.value * 100)}%</strong>
+                <span>{gestureHud.kind === 'brightness' ? '亮度' : '音量'}</span>
+              </div>
+            )}
             <div className="live-screen-controls">
               <button type="button" onClick={togglePlay} aria-label={playing ? '暂停' : '播放'}>
                 <Icon name={playing ? 'pause' : 'play'} size={20} />
@@ -514,17 +635,30 @@ export default function Live() {
                 {Array.from({ length: 26 }, (_, index) => <i key={index} style={{ height: `${8 + ((index * 7) % 22)}px` }} />)}
               </div>
               <button type="button" onClick={() => setMuted((value) => !value)} aria-label={muted ? '取消静音' : '静音'}><Icon name="volume" size={18} /></button>
-              {castSupported && (
+              {(castSupported || device === 'android') && (
                 <button
                   type="button"
                   aria-label="投屏"
                   onClick={async () => {
                     const video = videoRef.current as (HTMLVideoElement & { remote?: { prompt: () => Promise<void> } }) | null;
-                    try {
-                      await video?.remote?.prompt();
-                    } catch {
-                      toast('未找到可投屏设备', 'warning');
+                    if (video?.remote) {
+                      try {
+                        await video.remote.prompt();
+                        return;
+                      } catch {
+                        if (device === 'android' && openAndroidCastSettings()) {
+                          toast('未找到网页投屏设备，已打开系统投屏设置', 'success');
+                          return;
+                        }
+                        toast('未找到可投屏设备', 'warning');
+                        return;
+                      }
                     }
+                    if (device === 'android' && openAndroidCastSettings()) {
+                      toast('已打开系统投屏设置，请选择电视', 'success');
+                      return;
+                    }
+                    toast('当前环境不支持投屏', 'warning');
                   }}
                 >
                   <Icon name="wifi" size={18} />

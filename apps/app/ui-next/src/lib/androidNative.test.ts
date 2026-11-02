@@ -1,5 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installAndroidApk, isApkUrl, stopAndroidPlayback, updateAndroidPlayback } from './androidNative';
+import {
+  getAndroidMediaVolume,
+  getAndroidScreenBrightness,
+  hasAndroidMediaBridge,
+  installAndroidApk,
+  isApkUrl,
+  openAndroidCastSettings,
+  resetAndroidScreenBrightness,
+  setAndroidMediaVolume,
+  setAndroidScreenBrightness,
+  stopAndroidPlayback,
+  updateAndroidPlayback,
+} from './androidNative';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -37,5 +49,44 @@ describe('androidNative bridge', () => {
   it('returns false when the bridge throws', () => {
     vi.stubGlobal('window', { LsuNative: { installApk: () => { throw new Error('boom'); } } });
     expect(installAndroidApk('https://example.com/app.apk')).toBe(false);
+  });
+
+  it('delegates volume and brightness to the native bridge', () => {
+    const bridge = {
+      getMediaVolume: vi.fn(() => 35),
+      setMediaVolume: vi.fn(),
+      getScreenBrightness: vi.fn(() => 60),
+      setScreenBrightness: vi.fn(),
+      resetScreenBrightness: vi.fn(),
+    };
+    vi.stubGlobal('window', { LsuNative: bridge });
+    expect(hasAndroidMediaBridge()).toBe(true);
+    expect(getAndroidMediaVolume()).toBe(35);
+    expect(getAndroidScreenBrightness()).toBe(60);
+    setAndroidMediaVolume(47.6);
+    expect(bridge.setMediaVolume).toHaveBeenCalledWith(48);
+    setAndroidMediaVolume(120);
+    expect(bridge.setMediaVolume).toHaveBeenLastCalledWith(100);
+    setAndroidScreenBrightness(0);
+    expect(bridge.setScreenBrightness).toHaveBeenLastCalledWith(1);
+    setAndroidScreenBrightness(88.4);
+    expect(bridge.setScreenBrightness).toHaveBeenLastCalledWith(88);
+    resetAndroidScreenBrightness();
+    expect(bridge.resetScreenBrightness).toHaveBeenCalled();
+  });
+
+  it('opens system cast settings only when the bridge exposes it', () => {
+    expect(openAndroidCastSettings()).toBe(false);
+    const openCastSettings = vi.fn();
+    vi.stubGlobal('window', { LsuNative: { openCastSettings } });
+    expect(openAndroidCastSettings()).toBe(true);
+    expect(openCastSettings).toHaveBeenCalled();
+  });
+
+  it('falls back when media bridge values are invalid', () => {
+    vi.stubGlobal('window', { LsuNative: { getMediaVolume: () => Number.NaN, getScreenBrightness: () => Number.NaN } });
+    expect(hasAndroidMediaBridge()).toBe(false);
+    expect(getAndroidMediaVolume()).toBeNull();
+    expect(getAndroidScreenBrightness()).toBeNull();
   });
 });

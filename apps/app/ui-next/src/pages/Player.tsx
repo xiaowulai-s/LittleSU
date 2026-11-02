@@ -6,7 +6,17 @@ import type { Episode, Title } from '../data';
 import { Icon } from '../icons';
 import { useApp } from '../store';
 import { historyToTitle } from '../lib/adapters';
-import { stopAndroidPlayback, updateAndroidPlayback } from '../lib/androidNative';
+import {
+  getAndroidMediaVolume,
+  getAndroidScreenBrightness,
+  hasAndroidMediaBridge,
+  openAndroidCastSettings,
+  resetAndroidScreenBrightness,
+  setAndroidMediaVolume,
+  setAndroidScreenBrightness,
+  stopAndroidPlayback,
+  updateAndroidPlayback,
+} from '../lib/androidNative';
 import { refreshTitleDetail, useDetail } from '../lib/hooks';
 import { isExpiredStreamError, selectRefreshedEpisode } from '../lib/playbackRefresh';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
@@ -154,6 +164,7 @@ export default function Player() {
   const [audioId, setAudioId] = useState(0);
   const [pipSupported, setPipSupported] = useState(false);
   const castSupported = typeof HTMLVideoElement !== 'undefined' && 'remote' in HTMLVideoElement.prototype;
+  const androidMediaBridge = hasAndroidMediaBridge();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const subtitleInputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +173,7 @@ export default function Player() {
   const hudTimer = useRef<number | null>(null);
   const gestureRef = useRef<{
     kind: 'brightness' | 'volume';
+    side: TapSide;
     startY: number;
     startValue: number;
     startX: number;
@@ -172,6 +184,8 @@ export default function Player() {
   const longPressTimerRef = useRef<number | null>(null);
   const lastTapRef = useRef<{ at: number; side: TapSide } | null>(null);
   const rateBeforeLongPressRef = useRef(1);
+  const lastNativeBrightnessRef = useRef(-1);
+  const lastNativeVolumeRef = useRef(-1);
   const triedNextRef = useRef<(reason: string) => boolean>(() => false);
   const fullscreenRef = useRef<() => void>(() => undefined);
   const settingsRef = useRef(settings);
@@ -506,9 +520,14 @@ export default function Player() {
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.volume = muted ? 0 : settings.volume;
+    video.volume = muted ? 0 : androidMediaBridge ? 1 : settings.volume;
     video.muted = muted;
-  }, [streamUrl, settings.volume, muted]);
+  }, [streamUrl, settings.volume, muted, androidMediaBridge]);
+
+  useEffect(() => {
+    if (!androidMediaBridge) return;
+    return () => resetAndroidScreenBrightness();
+  }, [androidMediaBridge]);
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -970,16 +989,24 @@ export default function Player() {
     if (target.closest('.video-controls, .player-sheet-layer, .player-unlock, .video-play-big, .video-error, .video-center')) return;
     const touch = event.touches[0];
     if (!touch) return;
-    const side = tapSide(touch.clientX, window.innerWidth);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const side = tapSide(touch.clientX - rect.left, rect.width);
+    const nativeBrightness = androidMediaBridge ? getAndroidScreenBrightness() : null;
+    const nativeVolume = androidMediaBridge ? getAndroidMediaVolume() : null;
     gestureRef.current = {
       kind: side === 'left' ? 'brightness' : 'volume',
+      side,
       startY: touch.clientY,
-      startValue: side === 'left' ? brightness : (videoRef.current?.volume ?? settings.volume),
+      startValue: side === 'left'
+        ? (nativeBrightness !== null ? nativeBrightness / 100 : brightness)
+        : (nativeVolume !== null ? nativeVolume / 100 : (videoRef.current?.volume ?? settings.volume)),
       startX: touch.clientX,
       startTime: Date.now(),
       moved: false,
       longPress: false,
     };
+    lastNativeBrightnessRef.current = -1;
+    lastNativeVolumeRef.current = -1;
     clearLongPressTimer();
     longPressTimerRef.current = window.setTimeout(() => {
       const currentGesture = gestureRef.current;
@@ -1004,17 +1031,37 @@ export default function Player() {
       gesture.moved = true;
       clearLongPressTimer();
     }
-    if (!cssFullscreen || gesture.longPress || !gesture.moved) return;
+    if (gesture.longPress || !gesture.moved) return;
     const delta = gestureRatio(gesture.startY, touch.clientY, window.innerHeight);
     if (gesture.kind === 'brightness') {
-      const value = clampBrightness(gesture.startValue + delta * 1.3);
-      setBrightness(value);
+      const value = androidMediaBridge
+        ? Math.min(1, Math.max(0.05, gesture.startValue + delta * 1.3))
+        : clampBrightness(gesture.startValue + delta * 1.3);
+      if (androidMediaBridge) {
+        const percent = Math.round(value * 100);
+        if (percent !== lastNativeBrightnessRef.current) {
+          lastNativeBrightnessRef.current = percent;
+          setAndroidScreenBrightness(percent);
+        }
+      } else {
+        setBrightness(value);
+      }
       flashHud('brightness', value);
       return;
     }
     const value = clampVolume(gesture.startValue + delta);
     const video = videoRef.current;
-    if (video) {
+    if (androidMediaBridge) {
+      const percent = Math.round(value * 100);
+      if (percent !== lastNativeVolumeRef.current) {
+        lastNativeVolumeRef.current = percent;
+        setAndroidMediaVolume(percent);
+      }
+      if (video) {
+        video.volume = value === 0 ? 0 : 1;
+        video.muted = value === 0;
+      }
+    } else if (video) {
       video.volume = value;
       video.muted = value === 0;
     }
@@ -1033,13 +1080,13 @@ export default function Player() {
       return;
     }
     if (gesture.moved) {
-      if (gesture.kind === 'volume') {
+      if (gesture.kind === 'volume' && !androidMediaBridge) {
         updateSettings({ volume: videoRef.current?.volume ?? settings.volume });
       }
       return;
     }
     if (Date.now() - gesture.startTime > 300) return;
-    const side = tapSide(gesture.startX, window.innerWidth);
+    const side = gesture.side;
     const now = Date.now();
     if (isDoubleTap(lastTapRef.current, now, side)) {
       lastTapRef.current = null;
@@ -1199,7 +1246,8 @@ export default function Player() {
             onContextMenu={(event) => event.preventDefault()}
             onDoubleClick={(event) => {
               if (device !== 'windows' || locked || sheetOpen) return;
-              skipBy(doubleTapSeekSeconds(tapSide(event.clientX, window.innerWidth)));
+              const rect = event.currentTarget.getBoundingClientRect();
+              skipBy(doubleTapSeekSeconds(tapSide(event.clientX - rect.left, rect.width)));
             }}
           >
             <div className="video-bg" />
@@ -1212,7 +1260,7 @@ export default function Player() {
               onError={() => { if (!hlsRef.current) setVideoError('视频加载失败'); }}
               style={{
                 objectFit: fitMode,
-                filter: brightness !== 1 ? `brightness(${brightness})` : undefined,
+                filter: !androidMediaBridge && brightness !== 1 ? `brightness(${brightness})` : undefined,
                 '--sub-scale': settings.subtitleSize,
                 '--sub-color': settings.subtitleColor,
                 '--sub-bg': settings.subtitleBackground === 'block' ? 'rgba(0, 0, 0, .72)' : 'transparent',
@@ -1592,21 +1640,30 @@ export default function Player() {
                       </div>
                     </div>
                     <div className="player-sheet-actions">
-                      {castSupported && (
+                      {(castSupported || device === 'android') && (
                         <button
                           type="button"
                           onClick={async () => {
                             const video = videoRef.current as (HTMLVideoElement & { remote?: { prompt: () => Promise<void> } }) | null;
-                            if (!video?.remote) {
-                              toast('当前环境不支持投屏', 'warning');
+                            setSheetOpen(false);
+                            if (video?.remote) {
+                              try {
+                                await video.remote.prompt();
+                                return;
+                              } catch {
+                                if (device === 'android' && openAndroidCastSettings()) {
+                                  toast('未找到网页投屏设备，已打开系统投屏设置', 'success');
+                                  return;
+                                }
+                                toast('未找到可投屏设备', 'warning');
+                                return;
+                              }
+                            }
+                            if (device === 'android' && openAndroidCastSettings()) {
+                              toast('已打开系统投屏设置，请选择电视', 'success');
                               return;
                             }
-                            setSheetOpen(false);
-                            try {
-                              await video.remote.prompt();
-                            } catch {
-                              toast('未找到可投屏设备', 'warning');
-                            }
+                            toast('当前环境不支持投屏', 'warning');
                           }}
                         >
                           <Icon name="wifi" size={16} />
@@ -1627,7 +1684,7 @@ export default function Player() {
                       )}
                     </div>
                     <p className="player-sheet-tip">
-                      全屏时：左侧上下滑调亮度，右侧上下滑调音量；锁定后可避免误触。
+                      画面左侧上下滑调亮度，右侧上下滑调音量（安卓走系统音量）；全屏锁定后可避免误触。
                       快捷键：空格 播放/暂停 · ←→ 快退/快进 · ↑↓ 音量 · M 静音 · F 全屏。
                     </p>
                   </div>

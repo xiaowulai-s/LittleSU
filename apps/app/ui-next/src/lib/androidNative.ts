@@ -8,12 +8,78 @@ interface LsuNativeBridge {
     durationSec: number,
   ) => void;
   stopPlayback?: () => void;
+  getMediaVolume?: () => number;
+  setMediaVolume?: (percent: number) => void;
+  getScreenBrightness?: () => number;
+  setScreenBrightness?: (percent: number) => void;
+  resetScreenBrightness?: () => void;
+  openCastSettings?: () => void;
 }
 
 function bridge(): LsuNativeBridge | null {
   if (typeof window === 'undefined') return null;
   const value = (window as unknown as { LsuNative?: LsuNativeBridge }).LsuNative;
   return value && typeof value === 'object' ? value : null;
+}
+
+/** 原生音量/亮度桥是否可用（浏览器预览和桌面端为 false）。 */
+export function hasAndroidMediaBridge(): boolean {
+  const native = bridge();
+  return Boolean(native?.getMediaVolume && native?.setMediaVolume && native?.setScreenBrightness);
+}
+
+export function getAndroidMediaVolume(): number | null {
+  try {
+    const value = bridge()?.getMediaVolume?.();
+    return typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setAndroidMediaVolume(percent: number): void {
+  try {
+    bridge()?.setMediaVolume?.(Math.round(Math.min(100, Math.max(0, percent))));
+  } catch {
+    /* 原生桥不可用时忽略 */
+  }
+}
+
+export function getAndroidScreenBrightness(): number | null {
+  try {
+    const value = bridge()?.getScreenBrightness?.();
+    return typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(1, value)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setAndroidScreenBrightness(percent: number): void {
+  try {
+    bridge()?.setScreenBrightness?.(Math.round(Math.min(100, Math.max(1, percent))));
+  } catch {
+    /* 原生桥不可用时忽略 */
+  }
+}
+
+export function resetAndroidScreenBrightness(): void {
+  try {
+    bridge()?.resetScreenBrightness?.();
+  } catch {
+    /* 原生桥不可用时忽略 */
+  }
+}
+
+/** 打开系统投屏设置；Android WebView 不支持 Remote Playback 时作为入口。 */
+export function openAndroidCastSettings(): boolean {
+  const native = bridge();
+  if (!native?.openCastSettings) return false;
+  try {
+    native.openCastSettings();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** 只接受真正的 APK 地址，避免把 Release 网页当安装包下载。 */

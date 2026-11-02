@@ -9,12 +9,15 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.Settings
 import android.util.Rational
 import android.view.View
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
@@ -23,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.roundToInt
 
 class MainActivity : TauriActivity() {
   companion object {
@@ -251,6 +255,91 @@ class MainActivity : TauriActivity() {
   }
 
   inner class NativeBridge {
+    @Volatile
+    private var screenBrightnessPercent = -1
+
+    @JavascriptInterface
+    fun getMediaVolume(): Int = try {
+      val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+      if (max <= 0) 100 else (audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max).roundToInt().coerceIn(0, 100)
+    } catch (_: Exception) {
+      100
+    }
+
+    @JavascriptInterface
+    fun setMediaVolume(percent: Double) {
+      try {
+        val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        val target = (percent.roundToInt().coerceIn(0, 100) * max / 100f).roundToInt()
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, 0)
+      } catch (_: Exception) {
+        /* 部分设备在勿扰模式下拒绝调整，忽略 */
+      }
+    }
+
+    @JavascriptInterface
+    fun getScreenBrightness(): Int {
+      if (screenBrightnessPercent > 0) return screenBrightnessPercent
+      return try {
+        val system = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 255)
+        (system * 100f / 255f).roundToInt().coerceIn(1, 100)
+      } catch (_: Exception) {
+        100
+      }
+    }
+
+    @JavascriptInterface
+    fun setScreenBrightness(percent: Double) {
+      val value = percent.roundToInt().coerceIn(1, 100)
+      screenBrightnessPercent = value
+      runOnUiThread {
+        try {
+          val attrs = window.attributes
+          attrs.screenBrightness = value / 100f
+          window.attributes = attrs
+        } catch (_: Exception) {
+          /* 窗口属性不可用时保留系统亮度 */
+        }
+      }
+    }
+
+    @JavascriptInterface
+    fun resetScreenBrightness() {
+      screenBrightnessPercent = -1
+      runOnUiThread {
+        try {
+          val attrs = window.attributes
+          attrs.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+          window.attributes = attrs
+        } catch (_: Exception) {
+          /* ignore */
+        }
+      }
+    }
+
+    @JavascriptInterface
+    fun openCastSettings() {
+      runOnUiThread {
+        val actions = listOf(
+          "android.settings.CAST_SETTINGS",
+          Settings.ACTION_WIRELESS_SETTINGS,
+          Settings.ACTION_DISPLAY_SETTINGS,
+        )
+        for (action in actions) {
+          try {
+            startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return@runOnUiThread
+          } catch (_: Exception) {
+            /* 尝试下一个系统设置页 */
+          }
+        }
+        Toast.makeText(this@MainActivity, "当前系统没有投屏设置入口", Toast.LENGTH_SHORT).show()
+      }
+    }
+
     @JavascriptInterface
     fun installApk(url: String): Boolean {
       val parsed = Uri.parse(url)
