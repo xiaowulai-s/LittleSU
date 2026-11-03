@@ -22,7 +22,7 @@ import {
 import { refreshTitleDetail, useDetail } from '../lib/hooks';
 import { isExpiredStreamError, selectRefreshedEpisode } from '../lib/playbackRefresh';
 import { hlsConfigWithNativeLoader } from '../lib/hlsNativeLoader';
-import { clampBrightness, clampVolume, doubleTapSeekSeconds, gestureRatio, isDoubleTap, tapSide } from '../lib/gesture';
+import { clampBrightness, clampVolume, gestureRatio, isDoubleTapAt, seekSecondsFromSwipe, tapSide } from '../lib/gesture';
 import type { TapSide } from '../lib/gesture';
 import { pickQualityLevel, qualityLabel } from '../lib/quality';
 import { useWakeLock } from '../lib/wakeLock';
@@ -166,6 +166,8 @@ export default function Player() {
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>(settings.fitMode);
   const [brightness, setBrightness] = useState(1);
   const [gestureHud, setGestureHud] = useState<{ kind: 'brightness' | 'volume'; value: number } | null>(null);
+  const [seekHud, setSeekHud] = useState<{ seconds: number } | null>(null);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [subtitleTracks, setSubtitleTracks] = useState<{ id: number; label: string }[]>([]);
   const [audioTracks, setAudioTracks] = useState<{ id: number; label: string }[]>([]);
   const [subtitleId, setSubtitleId] = useState(-1);
@@ -195,11 +197,15 @@ export default function Player() {
     startValue: number;
     startX: number;
     startTime: number;
+    axis: 'pending' | 'horizontal' | 'vertical';
+    seekFrom: number;
+    seekSeconds: number;
     moved: boolean;
     longPress: boolean;
   } | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
-  const lastTapRef = useRef<{ at: number; side: TapSide } | null>(null);
+  const lastTapRef = useRef<number | null>(null);
+  const singleTapTimerRef = useRef<number | null>(null);
   const rateBeforeLongPressRef = useRef(1);
   const lastNativeBrightnessRef = useRef(-1);
   const lastNativeVolumeRef = useRef(-1);
@@ -246,7 +252,13 @@ export default function Player() {
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      if (singleTapTimerRef.current !== null) {
+        window.clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -1067,10 +1079,20 @@ export default function Player() {
     }
   };
 
+  const clearSingleTapTimer = () => {
+    if (singleTapTimerRef.current !== null) {
+      window.clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+  };
+
   const onSurfaceTouchStart = (event: ReactTouchEvent<HTMLDivElement>) => {
     if (locked || sheetOpen) return;
     const target = event.target as HTMLElement;
     if (target.closest('.video-controls, .player-sheet-layer, .player-unlock, .video-play-big, .video-error, .video-center')) return;
+    clearSingleTapTimer();
+    setSeekHud(null);
+    setGestureHud(null);
     const touch = event.touches[0];
     if (!touch) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -1086,6 +1108,9 @@ export default function Player() {
         : (nativeVolume !== null ? nativeVolume / 100 : (videoRef.current?.volume ?? settings.volume)),
       startX: touch.clientX,
       startTime: Date.now(),
+      axis: 'pending',
+      seekFrom: videoRef.current?.currentTime ?? 0,
+      seekSeconds: 0,
       moved: false,
       longPress: false,
     };
@@ -1113,9 +1138,19 @@ export default function Player() {
     const dy = Math.abs(touch.clientY - gesture.startY);
     if (!gesture.moved && (dx > 8 || dy > 8)) {
       gesture.moved = true;
+      gesture.axis = dx > dy ? 'horizontal' : 'vertical';
       clearLongPressTimer();
     }
     if (gesture.longPress || !gesture.moved) return;
+    if (gesture.axis === 'horizontal') {
+      setGestureHud(null);
+      const rect = event.currentTarget.getBoundingClientRect();
+      const seconds = seekSecondsFromSwipe(touch.clientX - gesture.startX, rect.width);
+      gesture.seekSeconds = seconds;
+      setSeekHud({ seconds });
+      return;
+    }
+    setSeekHud(null);
     const delta = gestureRatio(gesture.startY, touch.clientY, window.innerHeight);
     if (gesture.kind === 'brightness') {
       const value = androidMediaBridge
@@ -1164,25 +1199,41 @@ export default function Player() {
       return;
     }
     if (gesture.moved) {
+      setSeekHud(null);
+      setGestureHud(null);
+      if (gesture.axis === 'horizontal') {
+        const video = videoRef.current;
+        if (video && Number.isFinite(video.duration) && video.duration > 0) {
+          video.currentTime = Math.max(0, Math.min(video.duration, gesture.seekFrom + gesture.seekSeconds));
+          setCurrentTime(video.currentTime);
+        } else {
+          skipBy(gesture.seekSeconds);
+        }
+        return;
+      }
       if (gesture.kind === 'volume' && !androidMediaBridge) {
         updateSettings({ volume: videoRef.current?.volume ?? settings.volume });
       }
       return;
     }
+    setSeekHud(null);
     if (Date.now() - gesture.startTime > 300) return;
-    const side = gesture.side;
     const now = Date.now();
-    if (isDoubleTap(lastTapRef.current, now, side)) {
+    if (isDoubleTapAt(lastTapRef.current, now)) {
       lastTapRef.current = null;
-      const seconds = doubleTapSeekSeconds(side);
-      skipBy(seconds);
-      toast(side === 'left' ? '后退 10 秒' : '前进 10 秒', 'success');
+      togglePlay();
       return;
     }
-    lastTapRef.current = { at: now, side };
+    lastTapRef.current = now;
+    clearSingleTapTimer();
+    singleTapTimerRef.current = window.setTimeout(() => {
+      setControlsVisible((value) => !value);
+      singleTapTimerRef.current = null;
+    }, 260);
   };
 
   const onSurfaceTouchCancel = () => {
+    setSeekHud(null);
     if (gestureRef.current?.longPress) {
       const video = videoRef.current;
       if (video) video.playbackRate = rateBeforeLongPressRef.current || speeds[speedIndex] || 1;
@@ -1321,7 +1372,7 @@ export default function Player() {
       <div className="player-body">
         <div className="player-main">
           <div
-            className={`video-surface ${locked ? 'is-locked' : ''}`}
+            className={`video-surface ${locked ? 'is-locked' : ''} ${controlsVisible ? '' : 'is-controls-hidden'}`}
             style={{ '--h': title.hue } as CSSProperties}
           >
             <div className="video-bg" />
@@ -1381,10 +1432,9 @@ export default function Player() {
               onTouchEnd={onSurfaceTouchEnd}
               onTouchCancel={onSurfaceTouchCancel}
               onContextMenu={(event) => event.preventDefault()}
-              onDoubleClick={(event) => {
+              onDoubleClick={() => {
                 if (device !== 'windows' || locked || sheetOpen) return;
-                const rect = event.currentTarget.getBoundingClientRect();
-                skipBy(doubleTapSeekSeconds(tapSide(event.clientX - rect.left, rect.width)));
+                togglePlay();
               }}
             />
             {isMock && (
@@ -1487,6 +1537,13 @@ export default function Player() {
                 <Icon name={gestureHud.kind === 'brightness' ? 'sun' : 'volume'} size={20} />
                 <strong>{Math.round(gestureHud.value * 100)}%</strong>
                 <span>{gestureHud.kind === 'brightness' ? '亮度' : '音量'}</span>
+              </div>
+            )}
+            {seekHud && (
+              <div className="player-gesture-hud" aria-hidden="true">
+                <Icon name={seekHud.seconds >= 0 ? 'forward10' : 'rewind10'} size={20} />
+                <strong>{Math.abs(seekHud.seconds)}s</strong>
+                <span>{seekHud.seconds >= 0 ? '快进' : '快退'}</span>
               </div>
             )}
 
@@ -1822,7 +1879,7 @@ export default function Player() {
                       )}
                     </div>
                     <p className="player-sheet-tip">
-                      画面左侧上下滑调亮度，右侧上下滑调音量（安卓走系统音量）；全屏锁定后可避免误触。
+                      左右滑动快进/快退，单击显隐控制条，双击播放/暂停；左侧上下滑亮度、右侧音量；长按 2 倍速。
                       播放到片头结束/片尾开始时点上方按钮标记，开启自动跳过后生效。
                       快捷键：空格 播放/暂停 · ←→ 快退/快进 · ↑↓ 音量 · M 静音 · F 全屏。
                     </p>

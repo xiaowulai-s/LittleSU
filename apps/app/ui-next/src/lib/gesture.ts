@@ -30,3 +30,16 @@ export function clampBrightness(value: number): number {
 export function clampVolume(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
+
+
+/** 双击时间窗口（不区分左右区域）。 */
+export function isDoubleTapAt(lastAt: number | null, now: number, windowMs = 320): boolean {
+  return lastAt !== null && now - lastAt >= 0 && now - lastAt <= windowMs;
+}
+
+/** 横向滑动距离换算快进/快退秒数；整屏约 120 秒。 */
+export function seekSecondsFromSwipe(dx: number, width: number, maxSeconds = 120): number {
+  if (!Number.isFinite(dx) || !Number.isFinite(width) || width <= 0) return 0;
+  const value = Math.round((dx / width) * maxSeconds);
+  return Math.max(-maxSeconds, Math.min(maxSeconds, value));
+}

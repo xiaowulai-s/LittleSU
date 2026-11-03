@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampBrightness, clampVolume, doubleTapSeekSeconds, gestureRatio, isDoubleTap, tapSide } from './gesture';
+import { clampBrightness, clampVolume, doubleTapSeekSeconds, gestureRatio, isDoubleTap, isDoubleTapAt, seekSecondsFromSwipe, tapSide } from './gesture';
 
 describe('手势换算', () => {
   it('向上滑动为正、向下为负', () => {
@@ -30,5 +30,15 @@ describe('手势换算', () => {
     expect(isDoubleTap({ at: 1000, side: 'left' }, 1400, 'left')).toBe(false);
     expect(isDoubleTap({ at: 1000, side: 'left' }, 1100, 'right')).toBe(false);
     expect(isDoubleTap(null, 1100, 'left')).toBe(false);
+  });
+
+  it('双击不区分左右区域，横向滑动按整屏 120 秒换算', () => {
+    expect(isDoubleTapAt(1000, 1300)).toBe(true);
+    expect(isDoubleTapAt(1000, 1400)).toBe(false);
+    expect(isDoubleTapAt(null, 1100)).toBe(false);
+    expect(seekSecondsFromSwipe(0, 390)).toBe(0);
+    expect(seekSecondsFromSwipe(195, 390)).toBe(60);
+    expect(seekSecondsFromSwipe(-195, 390)).toBe(-60);
+    expect(seekSecondsFromSwipe(10000, 390)).toBe(120);
   });
 });
