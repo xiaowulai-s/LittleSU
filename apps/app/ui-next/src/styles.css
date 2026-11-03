@@ -3336,3 +3336,7 @@ body.lsu-pip .live-screen video {
 .cast-device:disabled { opacity: .5; cursor: default; }
 .cast-hint { margin: 12px 0 0; color: rgba(255, 255, 255, .5); font-size: 11px; line-height: 1.65; }
 .cast-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+/* 单击画面显示/隐藏控制条 */
+.video-surface .video-controls { transition: opacity .2s ease, transform .2s ease; }
+.video-surface.is-controls-hidden .video-controls { opacity: 0; pointer-events: none; transform: translateY(8px); }
